@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────
 //  PASSWORD — change this string to set yours
 // ─────────────────────────────────────────────
-const UNIVERSE_PASSWORD = "chrysanthemum";
+const UNIVERSE_PASSWORD = "albedo";
 
 // ─── Universe world dimensions (large virtual canvas) ───
 const WORLD_W = 6000;
