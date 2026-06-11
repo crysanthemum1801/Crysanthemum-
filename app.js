@@ -25,7 +25,7 @@ const SPECIAL_STARS = [
   {
     id:       "bigbang",
     title:    "Big Bang",
-    memory:   "The first message. The very first word that began everything between us. Before this, there was nothing. After this, there was a whole universe.",
+    memory:   "2 january 2025. The very first msg that began everything between us. Before this, there was nothing. After this, there was a whole universe.",
     creator:  "",
     x:        3000,
     y:        3000,
@@ -36,7 +36,7 @@ const SPECIAL_STARS = [
   {
     id:       "confession",
     title:    "Confession",
-    memory:   "18 January 2026. The day everything changed. The day we chose each other.",
+    memory:   "18 January 2026. The day those 3 guesses changed everything. The day we chose each other. The first star",
     creator:  "",
     x:        3140,
     y:        2900,
@@ -71,6 +71,10 @@ let longPressScreenY = 0;
 let pinchStartDist  = 0;
 let pinchStartZoom  = 1;
 let isPinching      = false;
+
+// Touch tap tracking
+let touchTapStartX = 0;
+let touchTapStartY = 0;
 
 // Canvas & context
 let canvas, ctx;
@@ -577,6 +581,8 @@ function onTouchStart(e) {
     hasDragged    = false;
     isPinching    = false;
 
+     touchTapStartX = t.clientX;
+    touchTapStartY = t.clientY;
     startLongPress(t.clientX, t.clientY);
   }
 
@@ -629,9 +635,21 @@ function onTouchEnd(e) {
   if (e.touches.length === 0) {
     isPinching = false;
     isDragging = false;
-    if (!hasDragged) {
+
+    if (!hasDragged && !longPressTriggered) {
+      cancelLongPress();
+      const now = Date.now();
+      if (now - lastTapTime > 300) {
+        lastTapTime = now;
+        const world = screenToWorld(touchTapStartX, touchTapStartY);
+        const hit = findStarAtWorld(world.x, world.y);
+        if (hit) openMemoryModal(hit);
+      }
+    } else {
       cancelLongPress();
     }
+
+    longPressTriggered = false;
   }
 
   if (e.touches.length === 1) {
