@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Chrysanthemum</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Inter:wght@300;400&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- ─── PASSWORD SCREEN ─── -->
+  <div id="password-screen">
+    <canvas id="bg-canvas"></canvas>
+    <div class="password-container">
+      <p class="caption">a world with you</p>
+      <h1 class="title">Chrysanthemum</h1>
+      <div class="input-wrapper">
+        <input
+          type="password"
+          id="password-input"
+          placeholder="enter the password"
+          autocomplete="off"
+          autocorrect="off"
+          spellcheck="false"
+        />
+        <button id="enter-btn" aria-label="Enter">&#8594;</button>
+      </div>
+      <p id="password-error" class="error-msg" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <!-- ─── UNIVERSE SCREEN ─── -->
+  <div id="universe-screen" class="hidden">
+    <canvas id="universe-canvas"></canvas>
+
+    <!-- Top bar -->
+    <div id="top-bar">
+      <span class="universe-title">Chrysanthemum</span>
+      <span id="star-count" class="star-count-badge">0 memories</span>
+    </div>
+
+    <!-- Hint -->
+    <div id="hint-bar">hold to plant a memory</div>
+
+    <!-- Long-press ripple -->
+    <div id="press-ripple" class="hidden"></div>
+  </div>
+
+  <!-- ─── MEMORY MODAL ─── -->
+  <div id="memory-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card">
+      <button class="modal-close" id="modal-close-btn" aria-label="Close">&times;</button>
+      <div class="modal-star-icon">&#9733;</div>
+      <h2 id="modal-title" class="modal-title"></h2>
+      <p id="modal-date" class="modal-date"></p>
+      <p id="modal-memory" class="modal-memory"></p>
+      <p id="modal-creator" class="modal-creator"></p>
+    </div>
+  </div>
+
+  <!-- ─── CREATION MODAL ─── -->
+  <div id="creation-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="creation-heading">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card creation-card">
+      <button class="modal-close" id="creation-close-btn" aria-label="Close">&times;</button>
+      <div class="modal-star-icon birth-icon">&#9728;</div>
+      <h2 id="creation-heading" class="modal-title">a new star is about to be born.</h2>
+      <p class="modal-subtitle">this memory will live here forever.</p>
+
+      <div class="field-group">
+        <label for="input-memory">memory <span class="required">*</span></label>
+        <textarea id="input-memory" placeholder="write what you want to remember…" rows="4" maxlength="1000"></textarea>
+        <span class="char-count" id="memory-char-count">0 / 1000</span>
+      </div>
+
+      <div class="field-group">
+        <label for="input-title">title <span class="optional">(optional)</span></label>
+        <input type="text" id="input-title" placeholder="name this memory…" maxlength="60" />
+      </div>
+
+      <div class="field-group">
+        <label for="input-creator">from <span class="optional">(optional)</span></label>
+        <input type="text" id="input-creator" placeholder="who is planting this star…" maxlength="40" />
+      </div>
+
+      <p id="creation-error" class="error-msg" aria-live="polite"></p>
+
+      <button id="create-star-btn" class="btn-primary">
+        <span id="create-btn-text">plant this star</span>
+        <span id="create-btn-loader" class="btn-loader hidden">&#10022;</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ─── OVERLAP TOAST ─── -->
+  <div id="overlap-toast" class="toast hidden" role="alert" aria-live="assertive">
+    this region of space is already occupied.
+  </div>
+
+  <!-- Firebase SDK (CDN, no build tools) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      addDoc,
+      onSnapshot,
+      serverTimestamp,
+      query,
+      orderBy
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    // ─────────────────────────────────────────────
+    //  FIREBASE CONFIG — paste your config here
+    //  Replace ALL values below with your own from
+    //  Firebase Console → Project Settings → Your apps
+    // ─────────────────────────────────────────────
+    const firebaseConfig = {
+      apiKey:            "AIzaSyDN2FxfwLETrQRutjQeS39YN-5gkYgVO1c",
+      authDomain:        "crysanthemum.firebaseapp.com",
+      projectId:         "crysanthemum",
+      storageBucket:     "crysanthemum.firebasestorage.app",
+      messagingSenderId: "617658533108",
+      appId:             "1:617658533108:web:e8323baccc1ffd52e0caa1"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+
+    // Make db and Firestore helpers available globally so app.js can use them
+    window._firebase = {
+      db,
+      collection,
+      addDoc,
+      onSnapshot,
+      serverTimestamp,
+      query,
+      orderBy
+    };
+
+    // Signal that Firebase is ready
+    window.dispatchEvent(new Event("firebase-ready"));
+  </script>
+
+  <script src="app.js"></script>
+</body>
+</html>
