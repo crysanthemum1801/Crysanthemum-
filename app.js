@@ -915,13 +915,15 @@ function openMemoryModal(star) {
   document.getElementById("memory-modal").classList.remove("hidden");
 }
 
-function closeMemoryModal() {
+function closeMemoryModal(fromLinking) {
   document.getElementById("memory-modal").classList.add("hidden");
-  // V2: cancel any pending binary link
-  linkingMode     = false;
-  linkingSourceId = null;
-  openModalStar   = null;
-  canvas.classList.remove("linking-mode");
+  // V2: only cancel linking state when NOT closing in order to start linking
+  if (!fromLinking) {
+    linkingMode     = false;
+    linkingSourceId = null;
+    canvas.classList.remove("linking-mode");
+  }
+  openModalStar = null;
 }
 
 // ─────────────────────────────────────────────
@@ -1062,7 +1064,7 @@ function attachModalEvents() {
       linkingSourceId = openModalStar.id;
       linkingMode     = true;
       canvas.classList.add("linking-mode");
-      closeMemoryModal();
+      closeMemoryModal(true);
       showLinkingToast();
     });
   }
