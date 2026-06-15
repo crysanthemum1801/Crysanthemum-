@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────
 //  PASSWORD — change this string to set yours
 // ─────────────────────────────────────────────
-const UNIVERSE_PASSWORD = "chrysanthemum";
+const UNIVERSE_PASSWORD = "albedo";
 
 // ─── Universe world dimensions (large virtual canvas) ───
 const WORLD_W = 6000;
@@ -25,7 +25,7 @@ const SPECIAL_STARS = [
   {
     id:       "bigbang",
     title:    "Big Bang",
-    memory:   "The first message. The very first word that began everything between us. Before this, there was nothing. After this, there was a whole universe.",
+    memory:   "The first message. 2 jan 2025.",
     creator:  "",
     x:        3000,
     y:        3000,
@@ -36,7 +36,7 @@ const SPECIAL_STARS = [
   {
     id:       "confession",
     title:    "Confession",
-    memory:   "18 January 2026. The day everything changed. The day we chose each other.",
+    memory:   "18 January 2026. 3 guesses",
     creator:  "",
     x:        3140,
     y:        2900,
