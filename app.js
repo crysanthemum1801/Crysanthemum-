@@ -83,6 +83,7 @@ const PARTICLE_COUNT = 80;
 
 // Background twinkle stars (purely visual, not data)
 let bgStars = [];
+let dustPatches = [];
 const BG_STAR_COUNT = 220;
 
 let hintShown        = false;
@@ -227,14 +228,62 @@ function resizeCanvas() {
 //  BACKGROUND STARS (visual only)
 // ─────────────────────────────────────────────
 function generateBgStars() {
-  bgStars = Array.from({ length: BG_STAR_COUNT }, () => ({
+  // Layer 1: tiny distant texture — ~140 stars
+  const layer1 = Array.from({ length: 140 }, () => ({
     x:     Math.random() * WORLD_W,
     y:     Math.random() * WORLD_H,
-    r:     Math.random() * 0.9 + 0.15,
-    alpha: Math.random() * 0.35 + 0.05,
+    r:     Math.random() * 0.2 + 0.1,
+    alpha: Math.random() * 0.10 + 0.05,
     phase: Math.random() * Math.PI * 2,
-    speed: Math.random() * 0.008 + 0.002
+    speed: Math.random() * 0.010 + 0.002,
+    layer: 1
   }));
+
+  // Layer 2: mid stars — ~70
+  const layer2 = Array.from({ length: 70 }, () => ({
+    x:     Math.random() * WORLD_W,
+    y:     Math.random() * WORLD_H,
+    r:     Math.random() * 0.4 + 0.3,
+    alpha: Math.random() * 0.20 + 0.15,
+    phase: Math.random() * Math.PI * 2,
+    speed: Math.random() * 0.008 + 0.002,
+    layer: 2
+  }));
+
+  // Layer 3: rare bright stars with light bleed — ~12
+  const layer3 = Array.from({ length: 12 }, () => ({
+    x:     Math.random() * WORLD_W,
+    y:     Math.random() * WORLD_H,
+    r:     Math.random() * 0.6 + 0.8,
+    alpha: Math.random() * 0.30 + 0.40,
+    phase: Math.random() * Math.PI * 2,
+    speed: Math.random() * 0.006 + 0.0015,
+    layer: 3
+  }));
+
+  bgStars = [...layer1, ...layer2, ...layer3];
+
+  // V3: seed sparse dust patches once here (not per-frame)
+  const hues = [
+    "70,90,160",   // blue
+    "120,95,165",  // lavender
+    "60,70,140"    // indigo
+  ];
+  dustPatches = [];
+  let attempts = 0;
+  while (dustPatches.length < 5 && attempts < 200) {
+    attempts++;
+    const candidate = {
+      x:      Math.random() * WORLD_W,
+      y:      Math.random() * WORLD_H,
+      radius: 900 + Math.random() * 500,
+      hue:    hues[Math.floor(Math.random() * hues.length)]
+    };
+    const tooClose = dustPatches.some(p =>
+      Math.hypot(p.x - candidate.x, p.y - candidate.y) < (p.radius + candidate.radius) * 0.55
+    );
+    if (!tooClose) dustPatches.push(candidate);
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -350,12 +399,17 @@ function renderLoop(ts) {
 //  NEBULA HAZE
 // ─────────────────────────────────────────────
 function drawNebula() {
-  // Very subtle center glow
-  const g = ctx.createRadialGradient(3000, 3000, 0, 3000, 3000, 1200);
-  g.addColorStop(0, "rgba(40, 55, 120, 0.06)");
-  g.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+  for (const p of dustPatches) {
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
+    g.addColorStop(0,    `rgba(${p.hue},0.05)`);
+    g.addColorStop(0.35, `rgba(${p.hue},0.03)`);
+    g.addColorStop(0.7,  `rgba(${p.hue},0.008)`);
+    g.addColorStop(1,    "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -365,6 +419,19 @@ function drawBgStars(ts) {
   const t = ts * 0.001;
   for (const s of bgStars) {
     const a = s.alpha * (0.6 + 0.4 * Math.sin(t * s.speed * 6 + s.phase));
+
+    // V3: subtle light bleed, Layer 3 (bright/rare) stars only
+    if (s.layer === 3) {
+      const bleedR = s.r * 7;
+      const bleed = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, bleedR);
+      bleed.addColorStop(0, `rgba(200,210,255,${a * 0.18})`);
+      bleed.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = bleed;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, bleedR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(200,210,255,${a})`;
