@@ -187,8 +187,9 @@ function launchUniverse() {
   resizeCanvas();
   window.addEventListener("resize", resizeCanvas);
 
-  // Seed background stars and particles
+// Seed background stars and particles
   generateBgStars();
+  generateDustPatches();
   generateParticles();
 
   // Load special stars first
@@ -263,14 +264,19 @@ function generateBgStars() {
 
   bgStars = [...layer1, ...layer2, ...layer3];
 
-  // V3: seed sparse dust patches once here (not per-frame)
+// ─────────────────────────────────────────────
+//  V3: DUST PATCHES (generated once, not per-frame)
+// ─────────────────────────────────────────────
+function generateDustPatches() {
   const hues = [
     "70,90,160",   // blue
     "120,95,165",  // lavender
     "60,70,140"    // indigo
   ];
+
   dustPatches = [];
   let attempts = 0;
+
   while (dustPatches.length < 5 && attempts < 200) {
     attempts++;
     const candidate = {
