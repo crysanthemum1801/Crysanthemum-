@@ -230,33 +230,33 @@ function resizeCanvas() {
 // ─────────────────────────────────────────────
 function generateBgStars() {
   // Layer 1: tiny distant texture — ~140 stars
-  const layer1 = Array.from({ length: 400 }, () => ({
+  const layer1 = Array.from({ length: 600 }, () => ({
     x:     Math.random() * WORLD_W,
     y:     Math.random() * WORLD_H,
     r:     Math.random() * 0.5 + 0.2,
-    alpha: Math.random() * 0.25 + 0.10,
+    alpha: Math.random() * 0.25 + 0.12,
     phase: Math.random() * Math.PI * 2,
     speed: Math.random() * 0.010 + 0.002,
     layer: 1
   }));
 
   // Layer 2: mid stars — ~70
-  const layer2 = Array.from({ length: 250 }, () => ({
+  const layer2 = Array.from({ length: 280 }, () => ({
     x:     Math.random() * WORLD_W,
     y:     Math.random() * WORLD_H,
-    r:     Math.random() * 0.4 + 0.3,
-    alpha: Math.random() * 0.30 + 0.20,
+    r:     Math.random() * 0.5 + 0.45,
+    alpha: Math.random() * 0.30 + 0.25,
     phase: Math.random() * Math.PI * 2,
     speed: Math.random() * 0.008 + 0.002,
     layer: 2
   }));
 
   // Layer 3: rare bright stars with light bleed — ~12
-  const layer3 = Array.from({ length: 12 }, () => ({
+  const layer3 = Array.from({ length: 40 }, () => ({
     x:     Math.random() * WORLD_W,
     y:     Math.random() * WORLD_H,
     r:     Math.random() * 1.0 + 1.0,
-    alpha: Math.random() * 0.35 + 0.55,
+    alpha: Math.random() * 0.45 + 0.55,
     phase: Math.random() * Math.PI * 2,
     speed: Math.random() * 0.006 + 0.0015,
     layer: 3
@@ -426,7 +426,7 @@ function drawNebula() {
 function drawBgStars(ts) {
   const t = ts * 0.001;
   for (const s of bgStars) {
-    const a = s.alpha * (0.6 + 0.4 * Math.sin(t * s.speed * 6 + s.phase));
+    const a = s.alpha * (0.8 + 0.2 * Math.sin(t * s.speed * 6 + s.phase));
 
     // V3: subtle light bleed, Layer 3 (bright/rare) stars only
     if (s.layer === 3) {
