@@ -233,19 +233,19 @@ function generateBgStars() {
   const layer1 = Array.from({ length: 400 }, () => ({
     x:     Math.random() * WORLD_W,
     y:     Math.random() * WORLD_H,
-    r:     Math.random() * 0.2 + 0.1,
-    alpha: Math.random() * 0.10 + 0.05,
+    r:     Math.random() * 0.5 + 0.2,
+    alpha: Math.random() * 0.25 + 0.10,
     phase: Math.random() * Math.PI * 2,
     speed: Math.random() * 0.010 + 0.002,
     layer: 1
   }));
 
   // Layer 2: mid stars — ~70
-  const layer2 = Array.from({ length: 150 }, () => ({
+  const layer2 = Array.from({ length: 250 }, () => ({
     x:     Math.random() * WORLD_W,
     y:     Math.random() * WORLD_H,
     r:     Math.random() * 0.4 + 0.3,
-    alpha: Math.random() * 0.20 + 0.15,
+    alpha: Math.random() * 0.30 + 0.20,
     phase: Math.random() * Math.PI * 2,
     speed: Math.random() * 0.008 + 0.002,
     layer: 2
@@ -255,8 +255,8 @@ function generateBgStars() {
   const layer3 = Array.from({ length: 12 }, () => ({
     x:     Math.random() * WORLD_W,
     y:     Math.random() * WORLD_H,
-    r:     Math.random() * 0.6 + 0.8,
-    alpha: Math.random() * 0.30 + 0.40,
+    r:     Math.random() * 1.0 + 1.0,
+    alpha: Math.random() * 0.35 + 0.55,
     phase: Math.random() * Math.PI * 2,
     speed: Math.random() * 0.006 + 0.0015,
     layer: 3
