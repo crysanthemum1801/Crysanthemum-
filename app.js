@@ -401,9 +401,9 @@ function renderLoop(ts) {
 function drawNebula() {
   for (const p of dustPatches) {
     const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
-    g.addColorStop(0,    `rgba(${p.hue},0.05)`);
-    g.addColorStop(0.35, `rgba(${p.hue},0.03)`);
-    g.addColorStop(0.7,  `rgba(${p.hue},0.008)`);
+    g.addColorStop(0,    `rgba(${p.hue},0.30)`);
+    g.addColorStop(0.35, `rgba(${p.hue},0.18)`);
+    g.addColorStop(0.7,  `rgba(${p.hue},0.08)`);
     g.addColorStop(1,    "rgba(0,0,0,0)");
     ctx.fillStyle = g;
     ctx.beginPath();
