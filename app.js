@@ -230,7 +230,7 @@ function resizeCanvas() {
 // ─────────────────────────────────────────────
 function generateBgStars() {
   // Layer 1: tiny distant texture — ~140 stars
-  const layer1 = Array.from({ length: 140 }, () => ({
+  const layer1 = Array.from({ length: 400 }, () => ({
     x:     Math.random() * WORLD_W,
     y:     Math.random() * WORLD_H,
     r:     Math.random() * 0.2 + 0.1,
@@ -241,7 +241,7 @@ function generateBgStars() {
   }));
 
   // Layer 2: mid stars — ~70
-  const layer2 = Array.from({ length: 70 }, () => ({
+  const layer2 = Array.from({ length: 150 }, () => ({
     x:     Math.random() * WORLD_W,
     y:     Math.random() * WORLD_H,
     r:     Math.random() * 0.4 + 0.3,
