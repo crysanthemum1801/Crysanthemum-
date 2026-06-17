@@ -191,11 +191,11 @@ function launchUniverse() {
   window.addEventListener("resize", resizeCanvas);
 
 // Seed background stars and particles
-generateBgStars();
-generateDustPatches();
-generateParticles();
-generateBigBangParticles();
-   
+  generateBgStars();
+  generateDustPatches();
+  generateParticles();
+  generateBigBangParticles();
+
   // Load special stars first
   stars = [...SPECIAL_STARS];
 
@@ -427,6 +427,16 @@ function renderLoop(ts) {
   for (const star of stars) {
     drawStar(star, ts);
   }
+
+  ctx.restore();
+
+  requestAnimationFrame(renderLoop);
+}
+
+// ─────────────────────────────────────────────
+//  NEBULA HAZE
+// ─────────────────────────────────────────────
+function drawNebula() {
    
 // ─────────────────────────────────────────────
 //  NEBULA HAZE
