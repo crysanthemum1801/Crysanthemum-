@@ -680,8 +680,8 @@ function drawMemoryStar(star, ts) {
 
 // ─── V3.1: radiant glint — short vertical + horizontal rays ───
 function drawRadiantGlint(x, y, glowRGB, twinkle, sizeScale) {
-  const rayLength = 8 * sizeScale * twinkle;
-  const rayAlpha  = 0.22 * twinkle;
+  const rayLength = 18 * sizeScale * twinkle;
+  const rayAlpha  = 0.60 * twinkle;
 
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
@@ -692,7 +692,7 @@ function drawRadiantGlint(x, y, glowRGB, twinkle, sizeScale) {
   vGrad.addColorStop(0.5, `rgba(${glowRGB},${rayAlpha})`);
   vGrad.addColorStop(1,   "rgba(0,0,0,0)");
   ctx.strokeStyle = vGrad;
-  ctx.lineWidth   = 0.6 * sizeScale;
+  ctx.lineWidth   = 1.6 * sizeScale;
   ctx.beginPath();
   ctx.moveTo(x, y - rayLength);
   ctx.lineTo(x, y + rayLength);
@@ -704,7 +704,7 @@ function drawRadiantGlint(x, y, glowRGB, twinkle, sizeScale) {
   hGrad.addColorStop(0.5, `rgba(${glowRGB},${rayAlpha})`);
   hGrad.addColorStop(1,   "rgba(0,0,0,0)");
   ctx.strokeStyle = hGrad;
-  ctx.lineWidth   = 0.6 * sizeScale;
+  ctx.lineWidth   = 1.6 * sizeScale;
   ctx.beginPath();
   ctx.moveTo(x - rayLength, y);
   ctx.lineTo(x + rayLength, y);
