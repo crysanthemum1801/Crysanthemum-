@@ -612,6 +612,11 @@ function drawMemoryStar(star, ts) {
     ctx.stroke();
   }
 
+  // ── V3.1: radiant aura — delicate four-point glint ──
+  if ((star.aura || "none") === "radiant") {
+    drawRadiantGlint(star.x, star.y, glowRGB, twinkle, sizeScale);
+  }
+
   // ── Core dot ──
   const coreR = (1.8 + 0.6 * twinkle) * sizeScale;
   const coreAlpha = 0.75 + 0.25 * twinkle + ageBrightness * 0.5;
@@ -619,6 +624,41 @@ function drawMemoryStar(star, ts) {
   ctx.arc(star.x, star.y, coreR, 0, Math.PI * 2);
   ctx.fillStyle = `rgba(${coreRGB},${Math.min(1, coreAlpha)})`;
   ctx.fill();
+}
+
+// ─── V3.1: radiant glint — short vertical + horizontal rays ───
+function drawRadiantGlint(x, y, glowRGB, twinkle, sizeScale) {
+  const rayLength = 8 * sizeScale * twinkle;
+  const rayAlpha  = 0.22 * twinkle;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  // Vertical ray
+  const vGrad = ctx.createLinearGradient(x, y - rayLength, x, y + rayLength);
+  vGrad.addColorStop(0,   "rgba(0,0,0,0)");
+  vGrad.addColorStop(0.5, `rgba(${glowRGB},${rayAlpha})`);
+  vGrad.addColorStop(1,   "rgba(0,0,0,0)");
+  ctx.strokeStyle = vGrad;
+  ctx.lineWidth   = 0.6 * sizeScale;
+  ctx.beginPath();
+  ctx.moveTo(x, y - rayLength);
+  ctx.lineTo(x, y + rayLength);
+  ctx.stroke();
+
+  // Horizontal ray
+  const hGrad = ctx.createLinearGradient(x - rayLength, y, x + rayLength, y);
+  hGrad.addColorStop(0,   "rgba(0,0,0,0)");
+  hGrad.addColorStop(0.5, `rgba(${glowRGB},${rayAlpha})`);
+  hGrad.addColorStop(1,   "rgba(0,0,0,0)");
+  ctx.strokeStyle = hGrad;
+  ctx.lineWidth   = 0.6 * sizeScale;
+  ctx.beginPath();
+  ctx.moveTo(x - rayLength, y);
+  ctx.lineTo(x + rayLength, y);
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 // Simple hash for consistent per-star phase
