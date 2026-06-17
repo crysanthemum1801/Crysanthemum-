@@ -415,7 +415,7 @@ html, body {
 .required { color: var(--accent); }
 .optional { color: var(--star-dim); opacity: 0.5; font-size: 0.68rem; }
 
-.field-group input,
+.field-group input:not([type="checkbox"]),
 .field-group textarea {
   background: rgba(120, 140, 200, 0.05);
   border: 1px solid var(--border);
