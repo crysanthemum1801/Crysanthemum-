@@ -1101,7 +1101,7 @@ function openCreationModal() {
   document.getElementById("input-title").value   = "";
   document.getElementById("input-creator").value = "";
   document.getElementById("creation-error").textContent = "";
-  document.getElementById("memory-char-count").textContent = "0 / 1000";
+  document.getElementById("memory-char-count").textContent = "0 / 50000";
   // V2: reset dropdowns to defaults
   if (document.getElementById("input-size"))  document.getElementById("input-size").value  = "standard";
   if (document.getElementById("input-color")) document.getElementById("input-color").value = "white";
@@ -1204,7 +1204,7 @@ function attachModalEvents() {
 
   // Char counter
   document.getElementById("input-memory").addEventListener("input", function() {
-    document.getElementById("memory-char-count").textContent = `${this.value.length} / 1000`;
+    document.getElementById("memory-char-count").textContent = `${this.value.length} / 50000`;
   });
 
   // Keyboard: Enter on inputs (not textarea)
