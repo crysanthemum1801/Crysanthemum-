@@ -362,7 +362,9 @@ function subscribeToFirestore() {
         size:         data.size          || "standard",
         color:        data.color         || "white",
         aura:         data.aura          || "none",
-        linkedStarId: data.linkedStarId  || null
+        linkedStarId: data.linkedStarId  || null,
+        // V3.2 field
+        isCelestial:  data.isCelestial   === true
       });
     });
 
@@ -629,17 +631,22 @@ function drawMemoryStar(star, ts) {
   const phase   = hashPhase(star.id);
   const twinkle = 0.7 + 0.3 * Math.sin(t * (1.0 + phase * 0.5) + phase * 6.28);
 
+// ── V3.2: celestial override — takes priority over normal size/color ──
+  const isCelestial = star.isCelestial === true;
+
   // ── V2: size ──
   const size = star.size || "standard";
-  const sizeScale = size === "tiny" ? 0.55 : size === "big" ? 2.6 : 1.0;
+  let sizeScale = size === "tiny" ? 0.55 : size === "big" ? 2.6 : 1.0;
+  if (isCelestial) sizeScale = 4.2; // larger than "big" (2.6)
 
   // ── V2: age-based brightness (uses existing timestamp, no new field) ──
   const ageMs      = Date.now() - (star.timestamp || 0);
   const ageDays    = ageMs / 86400000;
   // Caps at 30 days → +0.28 max glow boost, logarithmic curve
-  const ageBrightness = Math.min(0.28, Math.log1p(ageDays) * 0.07);
+  let ageBrightness = Math.min(0.28, Math.log1p(ageDays) * 0.07);
+  if (isCelestial) ageBrightness += 0.22; // stronger glow, always
 
-  // ── V2: color palette ──
+  // ── V2: color palette (celestial keeps its stored random color) ──
   const [coreRGB, glowRGB] = starColorPalette(star.color || "white");
 
   // ── Glow ──
@@ -664,9 +671,14 @@ function drawMemoryStar(star, ts) {
     ctx.stroke();
   }
 
-  // ── V3.1: radiant aura — delicate four-point glint ──
+// ── V3.1: radiant aura — delicate four-point glint ──
   if ((star.aura || "none") === "radiant") {
     drawRadiantGlint(star.x, star.y, glowRGB, twinkle, sizeScale);
+  }
+
+  // ── V3.2: celestial — elegant six-point glint, always present ──
+  if (isCelestial) {
+    drawCelestialGlint(star.x, star.y, glowRGB, twinkle, sizeScale);
   }
 
   // ── Core dot ──
@@ -709,6 +721,33 @@ function drawRadiantGlint(x, y, glowRGB, twinkle, sizeScale) {
   ctx.moveTo(x - rayLength, y);
   ctx.lineTo(x + rayLength, y);
   ctx.stroke();
+
+  ctx.restore();
+}
+
+// ─── V3.2: celestial glint — six soft rays, evenly spaced ───
+function drawCelestialGlint(x, y, glowRGB, twinkle, sizeScale) {
+  const rayLength = 22 * sizeScale * twinkle;
+  const rayAlpha  = 0.5 * twinkle;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 3) * i; // 60° apart
+    const dx = Math.cos(angle) * rayLength;
+    const dy = Math.sin(angle) * rayLength;
+
+    const grad = ctx.createLinearGradient(x, y, x + dx, y + dy);
+    grad.addColorStop(0,   `rgba(${glowRGB},${rayAlpha})`);
+    grad.addColorStop(1,   "rgba(0,0,0,0)");
+    ctx.strokeStyle = grad;
+    ctx.lineWidth   = 1.1 * sizeScale;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + dx, y + dy);
+    ctx.stroke();
+  }
 
   ctx.restore();
 }
@@ -1106,6 +1145,8 @@ function openCreationModal() {
   if (document.getElementById("input-size"))  document.getElementById("input-size").value  = "standard";
   if (document.getElementById("input-color")) document.getElementById("input-color").value = "white";
   if (document.getElementById("input-aura"))  document.getElementById("input-aura").value  = "none";
+  // V3.2: reset celestial toggle
+  if (document.getElementById("input-celestial")) document.getElementById("input-celestial").checked = false;
 
   document.getElementById("creation-modal").classList.remove("hidden");
   setTimeout(() => document.getElementById("input-memory").focus(), 400);
@@ -1125,10 +1166,16 @@ async function handleCreateStar() {
   const creator = document.getElementById("input-creator").value.trim();
   // V2 fields
   const size    = document.getElementById("input-size")  ? document.getElementById("input-size").value  : "standard";
-  const color   = document.getElementById("input-color") ? document.getElementById("input-color").value : "white";
+  let   color   = document.getElementById("input-color") ? document.getElementById("input-color").value : "white";
   const aura    = document.getElementById("input-aura")  ? document.getElementById("input-aura").value  : "none";
+  // V3.2: celestial toggle
+  const isCelestial = document.getElementById("input-celestial") ? document.getElementById("input-celestial").checked : false;
+  if (isCelestial) {
+    const palette = ["white", "blue", "lavender", "rose", "amber"];
+    color = palette[Math.floor(Math.random() * palette.length)];
+  }
+   
   const errEl   = document.getElementById("creation-error");
-
   if (!memory) {
     errEl.textContent = "a memory is required to birth a star.";
     document.getElementById("input-memory").focus();
@@ -1163,7 +1210,9 @@ async function handleCreateStar() {
       // V2 fields
       size:      size,
       color:     color,
-      aura:      aura
+      aura:      aura,
+      // V3.2 field
+      isCelestial: isCelestial
     });
 
     closeCreationModal();
