@@ -84,6 +84,9 @@ const PARTICLE_COUNT = 80;
 // Background twinkle stars (purely visual, not data)
 let bgStars = [];
 let dustPatches = [];
+// V3.1: Big Bang particle field
+let bigBangParticles = [];
+const BIGBANG_PARTICLE_COUNT = 18;
 const BG_STAR_COUNT = 220;
 
 let hintShown        = false;
@@ -191,7 +194,8 @@ function launchUniverse() {
 generateBgStars();
 generateDustPatches();
 generateParticles();
-
+generateBigBangParticles();
+   
   // Load special stars first
   stars = [...SPECIAL_STARS];
 
@@ -294,6 +298,29 @@ function generateDustPatches() {
   }
 }
 
+// ─── V3.1: seed Big Bang particle field once, around fixed origin ───
+function generateBigBangParticles() {
+  const cx = SPECIAL_STARS[0].x;
+  const cy = SPECIAL_STARS[0].y;
+
+  bigBangParticles = Array.from({ length: BIGBANG_PARTICLE_COUNT }, () => {
+    const orbitRadius = 30 + Math.random() * 70;
+    return {
+      angle:       Math.random() * Math.PI * 2,
+      orbitRadius: orbitRadius,
+      orbitSpeed:  (Math.random() * 0.0003 + 0.00012) * (Math.random() < 0.5 ? 1 : -1),
+      r:           Math.random() * 0.8 + 0.4,
+      alpha:       Math.random() * 0.18 + 0.07,
+      phase:       Math.random() * Math.PI * 2,
+      shimmerSpeed: Math.random() * 0.0015 + 0.0008
+    };
+  });
+
+  // Store origin so the draw function doesn't need SPECIAL_STARS lookup every frame
+  bigBangParticles.originX = cx;
+  bigBangParticles.originY = cy;
+}
+
 // ─────────────────────────────────────────────
 //  FLOATING PARTICLES (atmospheric)
 // ─────────────────────────────────────────────
@@ -390,19 +417,17 @@ function renderLoop(ts) {
   // V2: tick startup pulse (fades from 1 → 0 over ~1.2s)
   if (startupPulse > 0) startupPulse = Math.max(0, startupPulse - dt * 0.014);
 
-  // V2: draw binary threads beneath stars
+// V2: draw binary threads beneath stars
   drawBinaryThreads(ts);
+
+  // V3.1: Big Bang particle field (drawn once per frame, not per star)
+  drawBigBangParticles(ts);
 
   // Draw memory stars
   for (const star of stars) {
     drawStar(star, ts);
   }
-
-  ctx.restore();
-
-  requestAnimationFrame(renderLoop);
-}
-
+   
 // ─────────────────────────────────────────────
 //  NEBULA HAZE
 // ─────────────────────────────────────────────
@@ -462,6 +487,28 @@ function updateAndDrawParticles(dt) {
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(140,160,220,${p.alpha})`;
+    ctx.fill();
+  }
+}
+
+// ─── V3.1: drift + draw Big Bang particle field ───
+function drawBigBangParticles(ts) {
+  const cx = bigBangParticles.originX;
+  const cy = bigBangParticles.originY;
+
+  for (const p of bigBangParticles) {
+    p.angle += p.orbitSpeed * (ts - (p._lastTs || ts));
+    p._lastTs = ts;
+
+    const x = cx + Math.cos(p.angle) * p.orbitRadius;
+    const y = cy + Math.sin(p.angle) * p.orbitRadius * 0.6; // slight ellipse, feels less mechanical
+
+    const shimmer = 0.6 + 0.4 * Math.sin(ts * p.shimmerSpeed + p.phase);
+    const alpha = p.alpha * shimmer;
+
+    ctx.beginPath();
+    ctx.arc(x, y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(190,200,245,${alpha})`;
     ctx.fill();
   }
 }
@@ -579,7 +626,7 @@ function drawMemoryStar(star, ts) {
 
   // ── V2: size ──
   const size = star.size || "standard";
-  const sizeScale = size === "tiny" ? 0.55 : size === "big" ? 1.7 : 1.0;
+  const sizeScale = size === "tiny" ? 0.55 : size === "big" ? 2.6 : 1.0;
 
   // ── V2: age-based brightness (uses existing timestamp, no new field) ──
   const ageMs      = Date.now() - (star.timestamp || 0);
