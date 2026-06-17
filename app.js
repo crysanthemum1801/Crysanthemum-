@@ -98,6 +98,10 @@ let pendingCreatePos = null;   // {x, y} world coords
 let linkingMode      = false;  // true when user is picking a binary partner
 let linkingSourceId  = null;   // id of the star waiting for a partner
 let openModalStar    = null;   // star currently shown in memory modal
+
+// ─── V3.2: wandering starlight ───
+let starlight = null;            // active journey state, or null when idle
+let starlightIdleUntil = 0;      // ts when next journey may begin
 let startupPulse     = 1.0;   // 1.0 → 0 over ~1s; drives wakeup animation
 
 // ─────────────────────────────────────────────
@@ -430,6 +434,9 @@ function renderLoop(ts) {
     drawStar(star, ts);
   }
 
+  // V3.2: wandering starlight (drawn above stars, last)
+  updateAndDrawStarlight(ts);
+
   ctx.restore();
 
   requestAnimationFrame(renderLoop);
@@ -750,6 +757,139 @@ function drawCelestialGlint(x, y, glowRGB, twinkle, sizeScale) {
   }
 
   ctx.restore();
+}
+
+// ─── V3.2: advance and draw the single active starlight, if any ───
+function updateAndDrawStarlight(ts) {
+  if (!starlight) {
+    if (ts >= starlightIdleUntil) startStarlightJourney(ts);
+    return;
+  }
+
+  const { route, legIndex, legStartTs, legDuration } = starlight;
+  const from = route[legIndex];
+  const to   = route[legIndex + 1];
+
+  const elapsed  = ts - legStartTs;
+  const progress = Math.min(1, elapsed / legDuration);
+
+  // gentle ease (no linear, mechanical motion)
+  const eased = progress < 0.5
+    ? 2 * progress * progress
+    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+  const x = from.x + (to.x - from.x) * eased;
+  const y = from.y + (to.y - from.y) * eased;
+
+  // ── draw the wandering light itself ──
+  let opacity = 1;
+  if (starlight.fadingOut) {
+    const fadeElapsed = ts - starlight.fadeStartTs;
+    opacity = Math.max(0, 1 - fadeElapsed / 900);
+  }
+
+  if (opacity > 0) {
+    const shimmer = 0.7 + 0.3 * Math.sin(ts * 0.004);
+    const glowR = 9 * shimmer;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, glowR);
+    g.addColorStop(0, `rgba(225,220,255,${0.5 * opacity * shimmer})`);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, glowR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(x, y, 1.4 * shimmer, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(240,235,255,${0.85 * opacity})`;
+    ctx.fill();
+  }
+
+  // ── arrival blessing pulse (drawn independently of the light's own fade) ──
+  if (starlight.pulseStarId) {
+    const pulseElapsed = ts - starlight.pulseStartTs;
+    if (pulseElapsed < 1500) {
+      const pulseStar = route.find(s => s.id === starlight.pulseStarId);
+      if (pulseStar) {
+        const pulseFade = 1 - pulseElapsed / 1500;
+        const pulseR = 18 + pulseElapsed * 0.015;
+        const pg = ctx.createRadialGradient(pulseStar.x, pulseStar.y, 0, pulseStar.x, pulseStar.y, pulseR);
+        pg.addColorStop(0, `rgba(220,215,255,${0.35 * pulseFade})`);
+        pg.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = pg;
+        ctx.beginPath();
+        ctx.arc(pulseStar.x, pulseStar.y, pulseR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      starlight.pulseStarId = null;
+    }
+  }
+
+  // ── handle fade-out completion ──
+  if (starlight.fadingOut) {
+    if (ts - starlight.fadeStartTs >= 900) {
+      starlight = null;
+      starlightIdleUntil = ts + 4000 + Math.random() * 4000; // several seconds of silence
+    }
+    return;
+  }
+
+  // ── leg complete: trigger blessing, advance or finish ──
+  if (progress >= 1) {
+    starlight.pulseStarId  = to.id;
+    starlight.pulseStartTs = ts;
+
+    const isLastLeg = legIndex + 2 >= route.length;
+    if (isLastLeg) {
+      starlight.fadingOut  = true;
+      starlight.fadeStartTs = ts;
+    } else {
+      starlight.legIndex   = legIndex + 1;
+      starlight.legStartTs = ts;
+    }
+  }
+}
+
+// ─── V3.2: begin a new wandering starlight journey ───
+function startStarlightJourney(ts) {
+  const origin = pickCelestialOrigin();
+  if (!origin) {
+    starlightIdleUntil = ts + 8000; // nothing to do yet; check again later
+    return;
+  }
+
+  const route = buildStarlightRoute(origin);
+  if (route.length < 2) {
+    starlightIdleUntil = ts + 8000; // only one star total; nothing to travel to
+    return;
+  }
+
+  starlight = {
+    route:       route,
+    legIndex:    0,
+    legStartTs:  ts,
+    legDuration: 2600 + Math.random() * 1800, // ms per leg, slow and gentle
+    pulseStarId: null,
+    pulseStartTs: 0,
+    fadingOut:   false,
+    fadeStartTs: 0
+  };
+}
+
+// ─── V3.2: build a random route of 1–4 stops, starting from origin ───
+function buildStarlightRoute(origin) {
+  const others = stars.filter(s => s.type === "memory" && s.id !== origin.id);
+  const stopCount = Math.min(others.length, 1 + Math.floor(Math.random() * 4)); // 1–4 stops
+  const shuffled = [...others].sort(() => Math.random() - 0.5);
+  return [origin, ...shuffled.slice(0, stopCount)];
+}
+
+// ─── V3.2: choose a random Celestial star to start a journey from ───
+function pickCelestialOrigin() {
+  const celestials = stars.filter(s => s.type === "memory" && s.isCelestial === true);
+  if (celestials.length === 0) return null;
+  return celestials[Math.floor(Math.random() * celestials.length)];
 }
 
 // Simple hash for consistent per-star phase
