@@ -432,11 +432,6 @@ function renderLoop(ts) {
 
   requestAnimationFrame(renderLoop);
 }
-
-// ─────────────────────────────────────────────
-//  NEBULA HAZE
-// ─────────────────────────────────────────────
-function drawNebula() {
    
 // ─────────────────────────────────────────────
 //  NEBULA HAZE
