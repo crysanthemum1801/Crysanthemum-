@@ -769,90 +769,97 @@ function drawCelestialGlint(x, y, glowRGB, twinkle, sizeScale) {
 // ─── Birthday Nebula: persistent dust-particle state per star ───
 const nebulaParticleState = new Map();
 
+// Fixed visual size for every Birthday Nebula — deliberately independent of
+// the star's own size setting, so it's always as noticeable as a Celestial Star.
+// NOTE: this value is also read by findStarAtWorld() for tap/click hit-testing.
+const NEBULA_VISUAL_RADIUS = 80;
+
+// Smoothly-interpolated irregular boundary radius (0.55–1.35 × base) so the
+// cloud's silhouette has organic protrusions and gaps instead of being circular.
+function lobeBoundary(id, angle) {
+  const lobeCount = 10;
+  const norm     = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  const segAngle = (Math.PI * 2) / lobeCount;
+  const idx      = Math.floor(norm / segAngle);
+  const frac     = (norm - idx * segAngle) / segAngle;
+  const idxNext  = (idx + 1) % lobeCount;
+  const v0 = hashPhase(id + "lobe" + idx);
+  const v1 = hashPhase(id + "lobe" + idxNext);
+  const smooth = frac * frac * (3 - 2 * frac);
+  return 0.55 + (v0 + (v1 - v0) * smooth) * 0.8;
+}
+
 function getNebulaParticles(starId) {
   if (!nebulaParticleState.has(starId)) {
-    const particles = Array.from({ length: 5 }, () => ({
-      angle: Math.random() * Math.PI * 2,
-      radius: 8 + Math.random() * 14,
-      speed: (Math.random() * 0.0006 + 0.0002) * (Math.random() < 0.5 ? -1 : 1),
-      r: Math.random() * 0.9 + 0.4,
-      alpha: Math.random() * 0.15 + 0.08
-    }));
+    const N = 260; // hundreds of particles, generated once and cached
+    const palette = [
+      { c: "255,150,190", w: 0.34 }, // rose
+      { c: "225,90,175",  w: 0.28 }, // magenta
+      { c: "180,155,235", w: 0.28 }, // lavender
+      { c: "235,205,150", w: 0.10 }  // gold, rare accent
+    ];
+    const pickColor = () => {
+      let r = Math.random();
+      for (const p of palette) {
+        if (r < p.w) return p.c;
+        r -= p.w;
+      }
+      return palette[0].c;
+    };
+
+    const particles = Array.from({ length: N }, () => {
+      const angle     = Math.random() * Math.PI * 2;
+      const isWisp    = Math.random() < 0.18; // strays that dissolve into space
+      const radiusFrac = isWisp
+        ? 1.0 + Math.random() * 0.5
+        : Math.pow(Math.random(), 0.55); // biased dense toward center
+
+      return {
+        angle,
+        radiusFrac,
+        size: isWisp
+          ? (0.5 + Math.random() * 1.0)
+          : (0.6 + (1 - radiusFrac) * 1.8 + Math.random() * 0.9),
+        baseAlpha: isWisp
+          ? 0.05 + Math.random() * 0.08
+          : Math.max(0.06, (1 - radiusFrac) * 0.55 + 0.10) * (0.75 + Math.random() * 0.5),
+        color: pickColor(),
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.15 + Math.random() * 0.25,
+        jitter: 1.5 + Math.random() * 2.5
+      };
+    });
     nebulaParticleState.set(starId, particles);
   }
   return nebulaParticleState.get(starId);
 }
 
 function drawBirthdayNebula(star, ts) {
-function drawBirthdayNebula(star, ts) {
   const t  = ts * 0.001;
   const id = star.id || "";
-
-  // Match the star's own size scale so the nebula stays proportional to it
-  const size = star.size || "standard";
-  let sizeScale = size === "tiny" ? 0.55 : size === "big" ? 2.6 : 1.0;
-  if (star.isCelestial === true) sizeScale = 4.2;
-
-  const R = 46 * sizeScale; // base extent — well beyond the star itself
-
-  // Deterministic per-star pseudo-random values so each nebula has a
-  // unique, organic silhouette that stays stable across frames
-  const rnd = (salt) => hashPhase(id + salt);
-  const slowDrift = t * 0.03;
 
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
 
-  // Each blob is a rotated, squashed ellipse (not a plain circle) so the
-  // overlapping shapes read as an irregular cloud rather than a halo/ring.
-  const blobs = [
-    // bright rose/magenta core, close to the star — brightest region
-    { salt: "a", rMin: 0.55, rMax: 0.75, offR: 0.10, color: "255,140,180", peak: 0.46, squash: 0.85 },
-    { salt: "b", rMin: 0.70, rMax: 0.95, offR: 0.30, color: "230,90,165",  peak: 0.36, squash: 0.65 },
-    // lavender wisps extending outward
-    { salt: "c", rMin: 0.90, rMax: 1.20, offR: 0.45, color: "175,150,230", peak: 0.30, squash: 0.55 },
-    { salt: "d", rMin: 0.75, rMax: 1.05, offR: 0.55, color: "190,140,220", peak: 0.26, squash: 0.60 },
-    // outer magenta/rose haze, large spread, softer
-    { salt: "e", rMin: 1.10, rMax: 1.45, offR: 0.35, color: "215,110,175", peak: 0.16, squash: 0.70 },
-    // subtle gold wisp accent for depth
-    { salt: "f", rMin: 0.65, rMax: 0.85, offR: 0.50, color: "235,205,150", peak: 0.14, squash: 0.50 }
-  ];
+  const particles = getNebulaParticles(id);
 
-  blobs.forEach(b => {
-    const angle  = rnd(b.salt + "ang") * Math.PI * 2 + slowDrift * (rnd(b.salt) > 0.5 ? 1 : -1);
-    const dist   = b.offR * R;
-    const cx     = star.x + Math.cos(angle) * dist;
-    const cy     = star.y + Math.sin(angle) * dist;
-    const radius = (b.rMin + rnd(b.salt + "r") * (b.rMax - b.rMin)) * R;
-    const rotate = rnd(b.salt + "rot") * Math.PI * 2;
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rotate);
-    ctx.scale(1, b.squash);
-
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
-    g.addColorStop(0,    `rgba(${b.color},${b.peak})`);
-    g.addColorStop(0.35, `rgba(${b.color},${b.peak * 0.6})`);
-    g.addColorStop(0.7,  `rgba(${b.color},${b.peak * 0.2})`);
-    g.addColorStop(1,    "rgba(0,0,0,0)");
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  });
-
-  // Slow-drifting dust motes embedded within the cloud
-  const particles = getNebulaParticles(star.id);
   particles.forEach(p => {
-    p.angle += p.speed;
-    const orbitR = (0.3 + p.radius / 22) * R;
-    const px = star.x + Math.cos(p.angle) * orbitR;
-    const py = star.y + Math.sin(p.angle) * orbitR * 0.6;
+    const boundaryR = lobeBoundary(id, p.angle) * NEBULA_VISUAL_RADIUS;
+    const baseR = p.radiusFrac * boundaryR;
+
+    // gentle organic jitter so the cloud feels alive, not static
+    const jx = Math.sin(t * p.speed + p.phase) * p.jitter;
+    const jy = Math.cos(t * p.speed * 0.8 + p.phase) * p.jitter;
+
+    const px = star.x + Math.cos(p.angle) * baseR + jx;
+    const py = star.y + Math.sin(p.angle) * baseR + jy;
+
+    const twinkle = 0.75 + 0.25 * Math.sin(t * (p.speed + 0.3) + p.phase * 2);
+    const alpha = Math.min(0.85, p.baseAlpha * twinkle);
+
     ctx.beginPath();
-    ctx.arc(px, py, p.r, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255,210,225,${p.alpha + 0.08})`;
+    ctx.arc(px, py, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${p.color},${alpha})`;
     ctx.fill();
   });
 
@@ -1317,6 +1324,7 @@ function findStarAtWorld(wx, wy) {
     const s = stars[i];
     const hitR = s.type === "bigbang"    ? 22 / cam.zoom :
                  s.type === "confession" ? 16 / cam.zoom :
+                 s.birthdayNebula === true ? NEBULA_VISUAL_RADIUS / cam.zoom :
                  tapRadiusWorld;
     if (distWorld(wx, wy, s.x, s.y) < hitR) return s;
   }
