@@ -785,55 +785,56 @@ function getNebulaParticles(starId) {
 
 function drawBirthdayNebula(star, ts) {
   const t = ts * 0.001;
-  const drift = Math.sin(t * 0.05 + hashPhase(star.id) * 6.28) * 3;
+
+  // Match the star's own size scale so the nebula stays proportional to it
+  const size = star.size || "standard";
+  let sizeScale = size === "tiny" ? 0.55 : size === "big" ? 2.6 : 1.0;
+  if (star.isCelestial === true) sizeScale = 4.2;
+
+  const phase  = hashPhase(star.id);
+  const driftX = Math.sin(t * 0.04 + phase * 6.28) * 5 * sizeScale;
+  const driftY = Math.cos(t * 0.035 + phase * 4.1) * 4 * sizeScale;
+
+  // Overall footprint — roughly 6x the star's core diameter
+  const R = 34 * sizeScale;
 
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
 
-  // Rose cloud — soft, off-center, no hard edge
-  const roseG = ctx.createRadialGradient(
-    star.x - 6 + drift, star.y - 4, 0,
-    star.x - 6 + drift, star.y - 4, 34
-  );
-  roseG.addColorStop(0,   "rgba(230,160,190,0.05)");
-  roseG.addColorStop(0.5, "rgba(230,160,190,0.025)");
-  roseG.addColorStop(1,   "rgba(230,160,190,0)");
-  ctx.fillStyle = roseG;
-  ctx.beginPath();
-  ctx.arc(star.x, star.y, 40, 0, Math.PI * 2);
-  ctx.fill();
+  // Multiple overlapping clouds, each a different size/offset/color mix —
+  // overlapping irregular shapes are what avoid a single hard circular edge.
+  const layers = [
+    { dx: -0.55*R + driftX, dy: -0.30*R + driftY, r: 1.00*R, color: "223,150,185", a: 0.050 },
+    { dx:  0.60*R - driftY, dy:  0.20*R + driftX, r: 0.85*R, color: "178,165,225", a: 0.045 },
+    { dx: -0.15*R + driftY, dy:  0.55*R - driftX, r: 0.90*R, color: "200,160,205", a: 0.040 },
+    { dx:  0.35*R + driftX, dy: -0.50*R - driftY, r: 0.70*R, color: "185,150,215", a: 0.038 },
+    { dx:  0.05*R - driftX, dy:  0.05*R + driftY, r: 1.25*R, color: "210,170,200", a: 0.028 }
+  ];
 
-  // Lavender cloud — offset opposite direction
-  const lavG = ctx.createRadialGradient(
-    star.x + 7 - drift, star.y + 5, 0,
-    star.x + 7 - drift, star.y + 5, 32
-  );
-  lavG.addColorStop(0,   "rgba(180,170,230,0.045)");
-  lavG.addColorStop(0.5, "rgba(180,170,230,0.02)");
-  lavG.addColorStop(1,   "rgba(180,170,230,0)");
-  ctx.fillStyle = lavG;
-  ctx.beginPath();
-  ctx.arc(star.x, star.y, 38, 0, Math.PI * 2);
-  ctx.fill();
+  layers.forEach(layer => {
+    const cx = star.x + layer.dx;
+    const cy = star.y + layer.dy;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, layer.r);
+    g.addColorStop(0,    `rgba(${layer.color},${layer.a})`);
+    g.addColorStop(0.4,  `rgba(${layer.color},${layer.a * 0.55})`);
+    g.addColorStop(0.75, `rgba(${layer.color},${layer.a * 0.18})`);
+    g.addColorStop(1,    "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, layer.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
 
-  // Wide soft blend layer to unify the two tones, no visible seam
-  const blend = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, 46);
-  blend.addColorStop(0, "rgba(210,180,220,0.03)");
-  blend.addColorStop(1, "rgba(210,180,220,0)");
-  ctx.fillStyle = blend;
-  ctx.beginPath();
-  ctx.arc(star.x, star.y, 46, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Slow-drifting dust particles
+  // Slow-drifting dust particles within the nebula's footprint
   const particles = getNebulaParticles(star.id);
   particles.forEach(p => {
     p.angle += p.speed;
-    const px = star.x + Math.cos(p.angle) * p.radius;
-    const py = star.y + Math.sin(p.angle) * p.radius * 0.6;
+    const orbitR = p.radius * sizeScale * 2.2;
+    const px = star.x + Math.cos(p.angle) * orbitR;
+    const py = star.y + Math.sin(p.angle) * orbitR * 0.65;
     ctx.beginPath();
     ctx.arc(px, py, p.r, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(220,190,215,${p.alpha})`;
+    ctx.fillStyle = `rgba(225,195,220,${p.alpha})`;
     ctx.fill();
   });
 
