@@ -826,7 +826,12 @@ function getNebulaParticles(starId) {
         color: pickColor(),
         phase: Math.random() * Math.PI * 2,
         speed: 0.15 + Math.random() * 0.25,
-        jitter: 1.5 + Math.random() * 2.5
+        jitter: 1.5 + Math.random() * 2.5,
+        angularVelocity: (Math.random() - 0.5) * 0.006, // slow independent orbital drift (rad/sec)
+        radDriftSpeed:   0.03 + Math.random() * 0.05,    // very slow radial breathing
+        radDriftPhase:   Math.random() * Math.PI * 2,
+        glowSpeed:       0.02 + Math.random() * 0.05,    // slow independent brighten/fade
+        glowPhase:       Math.random() * Math.PI * 2
       };
     });
     nebulaParticleState.set(starId, particles);
@@ -843,19 +848,30 @@ function drawBirthdayNebula(star, ts) {
 
   const particles = getNebulaParticles(id);
 
+  // Very slow whole-cloud rotation so the silhouette evolves gradually
+  // over minutes, rather than the nebula ever pulsing as one unit.
+  const shapeDrift = t * 0.0008;
+
   particles.forEach(p => {
-    const boundaryR = lobeBoundary(id, p.angle) * NEBULA_VISUAL_RADIUS;
-    const baseR = p.radiusFrac * boundaryR;
+    const driftedAngle = p.angle + shapeDrift + t * p.angularVelocity;
+    const boundaryR = lobeBoundary(id, driftedAngle) * NEBULA_VISUAL_RADIUS;
+
+    // slow, independent radial breathing per particle — flowing gas, not a pulse
+    const radBreathe = 1 + Math.sin(t * p.radDriftSpeed + p.radDriftPhase) * 0.06;
+    const baseR = p.radiusFrac * boundaryR * radBreathe;
 
     // gentle organic jitter so the cloud feels alive, not static
     const jx = Math.sin(t * p.speed + p.phase) * p.jitter;
     const jy = Math.cos(t * p.speed * 0.8 + p.phase) * p.jitter;
 
-    const px = star.x + Math.cos(p.angle) * baseR + jx;
-    const py = star.y + Math.sin(p.angle) * baseR + jy;
+    const px = star.x + Math.cos(driftedAngle) * baseR + jx;
+    const py = star.y + Math.sin(driftedAngle) * baseR + jy;
 
-    const twinkle = 0.75 + 0.25 * Math.sin(t * (p.speed + 0.3) + p.phase * 2);
-    const alpha = Math.min(0.85, p.baseAlpha * twinkle);
+    // fast subtle flicker + slow independent regional brighten/fade,
+    // decoupled per particle so the cloud never pulses as a whole
+    const flicker   = 0.85 + 0.15 * Math.sin(t * (p.speed + 0.3) + p.phase * 2);
+    const glowDrift = 0.85 + 0.15 * Math.sin(t * p.glowSpeed + p.glowPhase);
+    const alpha = Math.min(0.85, p.baseAlpha * flicker * glowDrift);
 
     ctx.beginPath();
     ctx.arc(px, py, p.size, 0, Math.PI * 2);
