@@ -368,7 +368,9 @@ function subscribeToFirestore() {
         aura:         data.aura          || "none",
         linkedStarId: data.linkedStarId  || null,
         // V3.2 field
-        isCelestial:  data.isCelestial   === true
+        isCelestial:  data.isCelestial   === true,
+        // Birthday Nebula field
+        birthdayNebula: data.birthdayNebula === true
       });
     });
 
@@ -641,6 +643,11 @@ function drawMemoryStar(star, ts) {
 // ── V3.2: celestial override — takes priority over normal size/color ──
   const isCelestial = star.isCelestial === true;
 
+   // ── Birthday Nebula — drawn behind the star so it stays the focal point ──
+  if (star.birthdayNebula === true) {
+    drawBirthdayNebula(star, ts);
+  }
+
   // ── V2: size ──
   const size = star.size || "standard";
   let sizeScale = size === "tiny" ? 0.55 : size === "big" ? 2.6 : 1.0;
@@ -755,6 +762,80 @@ function drawCelestialGlint(x, y, glowRGB, twinkle, sizeScale) {
     ctx.lineTo(x + dx, y + dy);
     ctx.stroke();
   }
+
+  ctx.restore();
+}
+
+// ─── Birthday Nebula: persistent dust-particle state per star ───
+const nebulaParticleState = new Map();
+
+function getNebulaParticles(starId) {
+  if (!nebulaParticleState.has(starId)) {
+    const particles = Array.from({ length: 5 }, () => ({
+      angle: Math.random() * Math.PI * 2,
+      radius: 8 + Math.random() * 14,
+      speed: (Math.random() * 0.0006 + 0.0002) * (Math.random() < 0.5 ? -1 : 1),
+      r: Math.random() * 0.9 + 0.4,
+      alpha: Math.random() * 0.15 + 0.08
+    }));
+    nebulaParticleState.set(starId, particles);
+  }
+  return nebulaParticleState.get(starId);
+}
+
+function drawBirthdayNebula(star, ts) {
+  const t = ts * 0.001;
+  const drift = Math.sin(t * 0.05 + hashPhase(star.id) * 6.28) * 3;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  // Rose cloud — soft, off-center, no hard edge
+  const roseG = ctx.createRadialGradient(
+    star.x - 6 + drift, star.y - 4, 0,
+    star.x - 6 + drift, star.y - 4, 34
+  );
+  roseG.addColorStop(0,   "rgba(230,160,190,0.05)");
+  roseG.addColorStop(0.5, "rgba(230,160,190,0.025)");
+  roseG.addColorStop(1,   "rgba(230,160,190,0)");
+  ctx.fillStyle = roseG;
+  ctx.beginPath();
+  ctx.arc(star.x, star.y, 40, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Lavender cloud — offset opposite direction
+  const lavG = ctx.createRadialGradient(
+    star.x + 7 - drift, star.y + 5, 0,
+    star.x + 7 - drift, star.y + 5, 32
+  );
+  lavG.addColorStop(0,   "rgba(180,170,230,0.045)");
+  lavG.addColorStop(0.5, "rgba(180,170,230,0.02)");
+  lavG.addColorStop(1,   "rgba(180,170,230,0)");
+  ctx.fillStyle = lavG;
+  ctx.beginPath();
+  ctx.arc(star.x, star.y, 38, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Wide soft blend layer to unify the two tones, no visible seam
+  const blend = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, 46);
+  blend.addColorStop(0, "rgba(210,180,220,0.03)");
+  blend.addColorStop(1, "rgba(210,180,220,0)");
+  ctx.fillStyle = blend;
+  ctx.beginPath();
+  ctx.arc(star.x, star.y, 46, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Slow-drifting dust particles
+  const particles = getNebulaParticles(star.id);
+  particles.forEach(p => {
+    p.angle += p.speed;
+    const px = star.x + Math.cos(p.angle) * p.radius;
+    const py = star.y + Math.sin(p.angle) * p.radius * 0.6;
+    ctx.beginPath();
+    ctx.arc(px, py, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(220,190,215,${p.alpha})`;
+    ctx.fill();
+  });
 
   ctx.restore();
 }
@@ -1287,6 +1368,7 @@ function openCreationModal() {
   if (document.getElementById("input-aura"))  document.getElementById("input-aura").value  = "none";
   // V3.2: reset celestial toggle
   if (document.getElementById("input-celestial")) document.getElementById("input-celestial").checked = false;
+   if (document.getElementById("input-birthday-nebula")) document.getElementById("input-birthday-nebula").checked = false;
 
   document.getElementById("creation-modal").classList.remove("hidden");
   setTimeout(() => document.getElementById("input-memory").focus(), 400);
@@ -1310,6 +1392,7 @@ async function handleCreateStar() {
   const aura    = document.getElementById("input-aura")  ? document.getElementById("input-aura").value  : "none";
   // V3.2: celestial toggle
   const isCelestial = document.getElementById("input-celestial") ? document.getElementById("input-celestial").checked : false;
+   const birthdayNebula = document.getElementById("input-birthday-nebula") ? document.getElementById("input-birthday-nebula").checked : false;
   if (isCelestial) {
     const palette = ["white", "blue", "lavender", "rose", "amber"];
     color = palette[Math.floor(Math.random() * palette.length)];
@@ -1351,8 +1434,10 @@ async function handleCreateStar() {
       size:      size,
       color:     color,
       aura:      aura,
-      // V3.2 field
-      isCelestial: isCelestial
+// V3.2 field
+      isCelestial: isCelestial,
+      // Birthday Nebula field
+      birthdayNebula: birthdayNebula
     });
 
     closeCreationModal();
