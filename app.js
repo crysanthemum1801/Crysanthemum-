@@ -784,63 +784,81 @@ function getNebulaParticles(starId) {
 }
 
 function drawBirthdayNebula(star, ts) {
-  const t = ts * 0.001;
+function drawBirthdayNebula(star, ts) {
+  const t  = ts * 0.001;
+  const id = star.id || "";
 
   // Match the star's own size scale so the nebula stays proportional to it
   const size = star.size || "standard";
   let sizeScale = size === "tiny" ? 0.55 : size === "big" ? 2.6 : 1.0;
   if (star.isCelestial === true) sizeScale = 4.2;
 
-  const phase  = hashPhase(star.id);
-  const driftX = Math.sin(t * 0.04 + phase * 6.28) * 5 * sizeScale;
-  const driftY = Math.cos(t * 0.035 + phase * 4.1) * 4 * sizeScale;
+  const R = 46 * sizeScale; // base extent — well beyond the star itself
 
-  // Overall footprint — roughly 6x the star's core diameter
-  const R = 34 * sizeScale;
+  // Deterministic per-star pseudo-random values so each nebula has a
+  // unique, organic silhouette that stays stable across frames
+  const rnd = (salt) => hashPhase(id + salt);
+  const slowDrift = t * 0.03;
 
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
 
-  // Multiple overlapping clouds, each a different size/offset/color mix —
-  // overlapping irregular shapes are what avoid a single hard circular edge.
-  const layers = [
-    { dx: -0.55*R + driftX, dy: -0.30*R + driftY, r: 1.00*R, color: "223,150,185", a: 0.050 },
-    { dx:  0.60*R - driftY, dy:  0.20*R + driftX, r: 0.85*R, color: "178,165,225", a: 0.045 },
-    { dx: -0.15*R + driftY, dy:  0.55*R - driftX, r: 0.90*R, color: "200,160,205", a: 0.040 },
-    { dx:  0.35*R + driftX, dy: -0.50*R - driftY, r: 0.70*R, color: "185,150,215", a: 0.038 },
-    { dx:  0.05*R - driftX, dy:  0.05*R + driftY, r: 1.25*R, color: "210,170,200", a: 0.028 }
+  // Each blob is a rotated, squashed ellipse (not a plain circle) so the
+  // overlapping shapes read as an irregular cloud rather than a halo/ring.
+  const blobs = [
+    // bright rose/magenta core, close to the star — brightest region
+    { salt: "a", rMin: 0.55, rMax: 0.75, offR: 0.10, color: "255,140,180", peak: 0.46, squash: 0.85 },
+    { salt: "b", rMin: 0.70, rMax: 0.95, offR: 0.30, color: "230,90,165",  peak: 0.36, squash: 0.65 },
+    // lavender wisps extending outward
+    { salt: "c", rMin: 0.90, rMax: 1.20, offR: 0.45, color: "175,150,230", peak: 0.30, squash: 0.55 },
+    { salt: "d", rMin: 0.75, rMax: 1.05, offR: 0.55, color: "190,140,220", peak: 0.26, squash: 0.60 },
+    // outer magenta/rose haze, large spread, softer
+    { salt: "e", rMin: 1.10, rMax: 1.45, offR: 0.35, color: "215,110,175", peak: 0.16, squash: 0.70 },
+    // subtle gold wisp accent for depth
+    { salt: "f", rMin: 0.65, rMax: 0.85, offR: 0.50, color: "235,205,150", peak: 0.14, squash: 0.50 }
   ];
 
-  layers.forEach(layer => {
-    const cx = star.x + layer.dx;
-    const cy = star.y + layer.dy;
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, layer.r);
-    g.addColorStop(0,    `rgba(${layer.color},${layer.a})`);
-    g.addColorStop(0.4,  `rgba(${layer.color},${layer.a * 0.55})`);
-    g.addColorStop(0.75, `rgba(${layer.color},${layer.a * 0.18})`);
+  blobs.forEach(b => {
+    const angle  = rnd(b.salt + "ang") * Math.PI * 2 + slowDrift * (rnd(b.salt) > 0.5 ? 1 : -1);
+    const dist   = b.offR * R;
+    const cx     = star.x + Math.cos(angle) * dist;
+    const cy     = star.y + Math.sin(angle) * dist;
+    const radius = (b.rMin + rnd(b.salt + "r") * (b.rMax - b.rMin)) * R;
+    const rotate = rnd(b.salt + "rot") * Math.PI * 2;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rotate);
+    ctx.scale(1, b.squash);
+
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+    g.addColorStop(0,    `rgba(${b.color},${b.peak})`);
+    g.addColorStop(0.35, `rgba(${b.color},${b.peak * 0.6})`);
+    g.addColorStop(0.7,  `rgba(${b.color},${b.peak * 0.2})`);
     g.addColorStop(1,    "rgba(0,0,0,0)");
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(cx, cy, layer.r, 0, Math.PI * 2);
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
   });
 
-  // Slow-drifting dust particles within the nebula's footprint
+  // Slow-drifting dust motes embedded within the cloud
   const particles = getNebulaParticles(star.id);
   particles.forEach(p => {
     p.angle += p.speed;
-    const orbitR = p.radius * sizeScale * 2.2;
+    const orbitR = (0.3 + p.radius / 22) * R;
     const px = star.x + Math.cos(p.angle) * orbitR;
-    const py = star.y + Math.sin(p.angle) * orbitR * 0.65;
+    const py = star.y + Math.sin(p.angle) * orbitR * 0.6;
     ctx.beginPath();
     ctx.arc(px, py, p.r, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(225,195,220,${p.alpha})`;
+    ctx.fillStyle = `rgba(255,210,225,${p.alpha + 0.08})`;
     ctx.fill();
   });
 
   ctx.restore();
 }
-
+   
 // ─── V3.2: advance and draw the single active starlight, if any ───
 function updateAndDrawStarlight(ts) {
   if (!starlight) {
