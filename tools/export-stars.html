@@ -10,8 +10,10 @@
 <!--
   Chrysanthemum — read-only backup of the "stars" collection.
   - Reads only. This page imports no write/update/delete function from Firebase.
-  - Signs in with nothing (no email, no Google, no password). It can read only while the
-    database rules allow public reads. See the on-page explanation if access is refused.
+  - Signs in the same way as the website: you type the shared password, it goes to your
+    Cloudflare Worker, and the Worker returns a Firebase custom token for signInWithCustomToken().
+    No email, no Google account. The password is never stored, logged or written to the backup,
+    and the sign-in lives in memory only (closing or reloading this page signs out).
   - The backup stays in your browser until you tap Save; nothing is sent anywhere else.
 -->
 <style>
@@ -87,6 +89,8 @@
   th{color:var(--faint);font-weight:400;letter-spacing:.06em}
   details{margin-top:12px} summary{cursor:pointer;color:var(--soft);padding:8px 0}
   input[type=file]{color:var(--soft);max-width:100%;font-size:15px}
+  input[type=password]{flex:1 1 220px;min-height:56px;padding:0 20px;border-radius:999px;border:1px solid var(--line);background:rgba(10,9,26,.6);color:var(--ink);font:300 17px/1 inherit;font-family:inherit;letter-spacing:.08em}
+  input[type=password]::placeholder{color:var(--faint);letter-spacing:.04em}
   .tiny{font-size:13px;color:var(--faint)}
   [hidden]{display:none!important}
   @media (prefers-reduced-motion:reduce){.bar.busy>i{animation:none;width:100%!important;opacity:.5}}
@@ -104,14 +108,26 @@
   <section class="card privacy" aria-labelledby="priv">
     <h2 id="priv">Private memories</h2>
     <p>The backup file contains your memories in plain, readable text. Keep it somewhere only the two of you can reach, and never post it or commit it to GitHub.</p>
-    <p class="tiny">This page only <strong>reads</strong>. It cannot change or delete anything in the database, it sends nothing to any server except Google's Firebase to read, and the file never leaves this device unless you move it.</p>
+    <p class="tiny">This page only <strong>reads</strong> the database. It cannot change or delete anything. It talks only to your login Worker (to check the shared password) and to Google's Firebase (to sign in and read). The file never leaves this device unless you move it.</p>
+  </section>
+
+  <section class="card" id="signinCard" aria-labelledby="si">
+    <h2 id="si">Unlock</h2>
+    <p>Enter the same shared password as the website.</p>
+    <form id="signinForm" autocomplete="off">
+      <div class="row">
+        <input type="password" id="pw" placeholder="shared password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Shared password">
+        <button type="submit" id="unlock">Unlock</button>
+      </div>
+    </form>
+    <div class="stage" id="signinMsg" role="status" aria-live="polite"></div>
   </section>
 
   <section class="card" aria-labelledby="go">
     <h2 id="go">Back up</h2>
     <p>Reads the <code>stars</code> collection, checks the copy, then lets you save it as a JSON file.</p>
     <div class="row">
-      <button id="start">Read all memories</button>
+      <button id="start" disabled>Read all memories</button>
     </div>
     <div class="bar" id="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Progress" hidden><i id="fill"></i></div>
     <div class="stage" id="stage" aria-live="polite"></div>
@@ -290,19 +306,21 @@ function verifyBackup(jsonText, readCount, serverCount, originalPayload, buildWa
   }
 }
 
-function describeError(err){
+function describeError(err, signedIn){
   const code = err && err.code ? String(err.code).replace(/^firestore\//, "") : "";
   const raw = (err && err.message) || String(err);
   switch (code){
     case "permission-denied":
-      return { kind: "denied", title: "The database refused to let this page read.",
-        body: "Firestore returned “permission-denied”. That means the database rules currently require a signed-in user for reads of this collection (or a different rule is blocking it). This page deliberately signs in with nothing — no email, no Google — and it will not change any rule or setting to get around the refusal. Nothing was read or changed." };
+      return { kind: "denied", title: signedIn ? "The database refused this signed-in session." : "The database refused to let this page read.",
+        body: signedIn
+          ? "Sign-in worked, but Firestore returned “permission-denied”. The database rules do not accept this session (for example they may expect different sign-in claims). This page will not change any rule or setting to get around that. Nothing was read or changed."
+          : "Firestore returned “permission-denied”: the rules require a signed-in user. Unlock with the shared password first. This page will not change any rule or setting. Nothing was read or changed." };
     case "unavailable": case "deadline-exceeded":
       return { kind: "net", title: "Couldn't reach the database.", body: "The network dropped or was too slow (" + code + "). Check the connection and try again. Nothing was changed." };
     case "resource-exhausted":
       return { kind: "quota", title: "Today's free read allowance may be used up.", body: "Firestore reported “resource-exhausted”. The free plan resets daily; try again later. Nothing was changed." };
     case "unauthenticated":
-      return { kind: "denied", title: "The database wants a signed-in user.", body: "Firestore returned “unauthenticated”. This page signs in with nothing and changes no settings. Nothing was read or changed." };
+      return { kind: "denied", title: "The database wants a signed-in user.", body: "Firestore returned “unauthenticated”. Unlock with the shared password and try again. Nothing was read or changed." };
     default:
       return { kind: "other", title: "The export stopped.", body: raw + (code ? " (" + code + ")" : "") + ". Nothing was changed." };
   }
@@ -329,11 +347,85 @@ const firebaseConfig = {
   messagingSenderId: "617658533108",
   appId: "1:617658533108:web:e8323baccc1ffd52e0caa1"
 };
+// Public address of your login Worker (same value as AUTH_WORKER_URL in app.js). Not a secret.
+const AUTH_WORKER_URL = "https://chrysanthemum-auth.crysanthemum-1801.workers.dev/";
 const COLLECTION = "stars", PAGE_SIZE = 200, BIG_WARN_BYTES = 40 * 1024 * 1024;
+const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";   // same Firebase version as the website
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 let state = null;   // { jsonText, hash, fileName, bytes, count, readCount, payload }
+let fbp = null;     // memoised Firebase setup
+let signedIn = false;
+let unlocking = false;
+
+// Loads Firebase once. Only read-only Firestore functions and the sign-in function are imported.
+function ensureFirebase(){
+  if (fbp) return fbp;
+  fbp = (async () => {
+    let appM, fsM, authM;
+    try {
+      [appM, fsM, authM] = await Promise.all([
+        import(SDK + "firebase-app.js"), import(SDK + "firebase-firestore.js"), import(SDK + "firebase-auth.js")
+      ]);
+    } catch (_) {
+      throw Object.assign(new Error("Couldn't load Firebase's code from Google (offline, or a blocker is active)"), { code: "unavailable" });
+    }
+    const app = appM.initializeApp(firebaseConfig);
+    // In-memory sign-in only: nothing is saved in the browser, and a reload signs out.
+    const auth = authM.initializeAuth(app, { persistence: authM.inMemoryPersistence });
+    const db = fsM.getFirestore(app);
+    return { auth, db, signInWithCustomToken: authM.signInWithCustomToken, fs: fsM };
+  })();
+  fbp.catch(() => { fbp = null; });   // allow a retry after a failed load
+  return fbp;
+}
+
+// Sends the password to the Worker (request body only) and returns the custom token.
+async function requestCustomToken(password){
+  const fail = m => Object.assign(new Error("login-failed"), { userMessage: m });
+  if (AUTH_WORKER_URL.includes("REPLACE-WITH")) throw fail("This tool's Worker address is not set yet. Edit AUTH_WORKER_URL near the top of the file.");
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 15000);
+  let res;
+  try {
+    res = await fetch(AUTH_WORKER_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "login", password }), cache: "no-store", credentials: "omit",
+      referrerPolicy: "no-referrer", signal: ctrl.signal });
+  } catch (_) { throw fail("Couldn't reach the login Worker. Check the connection and the Worker address."); }
+  finally { clearTimeout(timer); }
+  if (res.status === 401) throw fail("That isn't the shared password.");
+  if (res.status === 429) throw fail("Too many tries. Rest for a while (about 15 minutes), then try again.");
+  if (res.status === 403) throw fail("The Worker refused this page's address. Open this tool from your website's address.");
+  if (!res.ok) throw fail("The login Worker had a problem. Try again in a moment.");
+  let data; try { data = await res.json(); } catch (_) { throw fail("The login Worker gave an unreadable answer."); }
+  if (!data || data.ok !== true || typeof data.customToken !== "string") throw fail("The login Worker gave an unexpected answer.");
+  return data.customToken;
+}
+
+async function unlock(ev){
+  ev.preventDefault();
+  if (unlocking || signedIn) return;
+  const pw = $("pw").value.trim();
+  const msg = $("signinMsg");
+  if (!pw){ msg.textContent = "Type the shared password."; return; }
+  unlocking = true; $("unlock").disabled = true; $("pw").readOnly = true; msg.textContent = "Checking…";
+  try {
+    const fb = await ensureFirebase();
+    const token = await requestCustomToken(pw);
+    $("pw").value = "";
+    await fb.signInWithCustomToken(fb.auth, token);
+    signedIn = true;
+    $("signinCard").hidden = true;
+    $("start").disabled = false;
+    stage("Signed in. Ready to read.");
+  } catch (err){
+    console.error("Sign-in failed:", err && err.code ? err.code : (err && err.userMessage ? "worker" : "unknown"));
+    msg.textContent = err && err.userMessage ? err.userMessage
+      : (err && err.code === "unavailable" ? err.message + "." : "Firebase didn't accept the sign-in. Nothing was read or changed.");
+    unlocking = false; $("unlock").disabled = false; $("pw").readOnly = false;
+    $("pw").value = ""; $("pw").focus();
+  }
+}
 
 function stage(t){ $("stage").textContent = t; }
 function progress(pct, busy){
@@ -351,16 +443,9 @@ async function run(){
   $("start").disabled = true; $("out").innerHTML = ""; $("saveCard").hidden = true; state = null;
   progress(0, true); stage("Connecting…");
   try {
-    let fb, fs;
-    try {
-      fb = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-      fs = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-    } catch (_) {
-      throw Object.assign(new Error("Couldn't load Firebase's code from Google (offline, or a blocker is active)"), { code: "unavailable" });
-    }
-    const { initializeApp } = fb;
-    const { getFirestore, collection, query, orderBy, documentId, limit, startAfter, getDocs, getCountFromServer } = fs; // read-only imports only
-    const db = getFirestore(initializeApp(firebaseConfig));
+    if (!signedIn) throw Object.assign(new Error("Not unlocked"), { code: "unauthenticated" });
+    const { db, fs } = await ensureFirebase();
+    const { collection, query, orderBy, documentId, limit, startAfter, getDocs, getCountFromServer } = fs; // read-only functions only
     const col = collection(db, COLLECTION);
 
     // Page through by document ID. (Ordering by a data field would silently skip documents lacking it.)
@@ -414,11 +499,11 @@ async function run(){
     $("saveCard").hidden = false;
   } catch (err){
     console.error(err);
-    const d = describeError(err);
+    const d = describeError(err, signedIn);
     progress(0); $("bar").hidden = true; stage("");
     let extra = "";
-    if (d.kind === "denied") extra = `<p><strong>What this means:</strong> the database is already locked to signed-in users, so a no-sign-in tool can no longer take this backup. It is not a fault in this page.</p>
-      <p><strong>Safe options:</strong> restore read access only if you decide to (that is a production change this tool will not make), or take the backup through the access method chosen in UPDATE 01. Do not publish new rules until a backup exists.</p>`;
+    if (d.kind === "denied") extra = `<p><strong>What this means:</strong> the sign-in step succeeded or was skipped, but the database rules did not allow the read. No rule or setting was touched by this page.</p>
+      <p><strong>Safe options:</strong> check that the Firestore rules in the console are the ones you intended (compare with your saved old-rules.txt). Do not loosen rules just to make a backup run — tell me the exact message instead.</p>`;
     result("bad", d.title, `<p>${esc(d.body)}</p>${extra}`);
   } finally {
     $("start").disabled = false;
@@ -459,6 +544,7 @@ async function checkPicked(file){
 }
 
 $("start").onclick = run;
+$("signinForm").addEventListener("submit", unlock);
 $("save").onclick = save;
 $("pick").onchange = e => checkPicked(e.target.files[0]);
 
