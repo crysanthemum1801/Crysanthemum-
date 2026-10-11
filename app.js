@@ -11,7 +11,7 @@
 //  Set this to your Worker's address (Cloudflare → Workers → chrysanthemum-auth → "Visit").
 //  The address is public and is not a secret.
 // ─────────────────────────────────────────────
-const AUTH_WORKER_URL = "https://REPLACE-WITH-YOUR-WORKER-ADDRESS.workers.dev/";
+const AUTH_WORKER_URL = "https://chrysanthemum-auth.crysanthemum-1801.workers.dev/";
 
 // ─── Universe world dimensions (large virtual canvas) ───
 const WORLD_W = 6000;
