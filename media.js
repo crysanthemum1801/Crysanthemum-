@@ -12,7 +12,7 @@
 window.ChrMedia = (function () {
   // ── CONFIG (both URLs are public identifiers, not secrets) ──
   const WORKER_URL      = "https://chrysanthemum-auth.crysanthemum-1801.workers.dev/";
-  const APPS_SCRIPT_URL = "REPLACE-WITH-PRODUCTION-APPS-SCRIPT-EXEC-URL";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyT6Smk9lBPS-31w4lDtguDWTbGBYPOKi4fwr7kw_FaRRkjOulRRaH9csXdqYhUFidbmA/exec";
 
   // Client limits equal the server caps (Worker, Apps Script and Firestore rules use the same numbers).
   const MAX_PHOTO_BYTES = 1.5 * 1024 * 1024;
