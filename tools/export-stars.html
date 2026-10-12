@@ -283,6 +283,17 @@ function verifyBackup(jsonText, readCount, serverCount, originalPayload, buildWa
     else add("pass", key, r.trueN + " star(s) marked true, " + (r.n - r.trueN) + " false");
   }
 
+  // Media references (photos / voice notes). The backup holds only the references; the files stay in the private Drive folder.
+  const mediaDocs = p.docs.filter(d => d && isPlainObject(d.data) && "media" in d.data);
+  if (!mediaDocs.length) add("pass", "media", "no star has media attached (normal before the Photos + Audio feature is used)");
+  else {
+    const idRe = /^[A-Za-z0-9_-]{20,80}$/;
+    const badRefs = mediaDocs.filter(d => !Array.isArray(d.data.media) || d.data.media.length < 1 || d.data.media.length > 3 ||
+      d.data.media.some(m => !isPlainObject(m) || !idRe.test(String(m.id)) || (m.kind !== "image" && m.kind !== "audio") || typeof m.mime !== "string" || !Number.isInteger(m.bytes)));
+    if (badRefs.length) add("fail", "media", badRefs.length + " star(s) have a malformed media reference");
+    else add("pass", "media", mediaDocs.length + " star(s) carry media references. Reminder: the Drive files themselves are NOT in this backup.");
+  }
+
   const linked = p.docs.filter(d => d && isPlainObject(d.data) && "linkedStarId" in d.data);
   if (!linked.length) add("pass", "linkedStarId", "no linked stars in this backup");
   else {
