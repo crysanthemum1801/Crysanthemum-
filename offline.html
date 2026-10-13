@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#060710" />
+  <title>Chrysanthemum — offline</title>
+  <style>
+    html,body{height:100%;margin:0;background:radial-gradient(circle at 50% 50%,#0c0e1e,#060710 85%);color:#e8e8f4;
+      font-family:"Cormorant Garamond",Georgia,serif;}
+    main{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      text-align:center;padding:24px;box-sizing:border-box;}
+    p.caption{font-family:Inter,system-ui,sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;opacity:.6;margin:0 0 12px;}
+    h1{font-weight:300;font-size:clamp(32px,8vw,52px);margin:0 0 16px;}
+    p.msg{font-family:Inter,system-ui,sans-serif;font-weight:300;font-size:15px;line-height:1.6;max-width:420px;opacity:.85;margin:0 0 28px;}
+    button{font:inherit;font-family:Inter,system-ui,sans-serif;font-size:14px;color:#e8e8f4;background:transparent;
+      border:1px solid rgba(232,232,244,.4);border-radius:999px;padding:10px 24px;cursor:pointer;}
+  </style>
+</head>
+<body>
+  <main>
+    <p class="caption">a world with you</p>
+    <h1>Chrysanthemum</h1>
+    <p class="msg">you're offline, and the universe couldn't be loaded. your memories are safe &mdash; they live online and need a connection to open. please reconnect and try again.</p>
+    <button type="button" onclick="location.reload()">try again</button>
+  </main>
+</body>
+</html>
