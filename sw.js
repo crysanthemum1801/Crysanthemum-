@@ -3,7 +3,7 @@
    Cloudflare Worker, Apps Script, Google Fonts, gstatic) and every non-GET request is left
    completely alone, so auth, Firestore and media behave exactly as before.
    Bump CACHE_VERSION on each deployment that changes shell files. */
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const CACHE_PREFIX  = "chrysanthemum-shell-";
 const CACHE_NAME    = CACHE_PREFIX + CACHE_VERSION;
 
@@ -13,10 +13,11 @@ const u       = (p) => new URL(p, SCOPE).href;
 const INDEX   = u("index.html");
 const OFFLINE = u("offline.html");
 
-const PRECACHE = [
-  u("./"), INDEX, OFFLINE,
-  u("style.css"), u("app.js"), u("media.js"),
-  u("manifest.webmanifest"),
+// REQUIRED: install fails (and the old worker stays) only if one of these cannot be fetched.
+const PRECACHE_REQUIRED = [u("./"), INDEX, u("manifest.webmanifest")];
+// OPTIONAL: cached when available; a missing/404 file here never blocks the service worker from installing.
+const PRECACHE_OPTIONAL = [
+  OFFLINE, u("style.css"), u("app.js"), u("media.js"),
   u("icons/icon-192.png"), u("icons/icon-512.png"), u("icons/icon-maskable-512.png"),
   u("icons/apple-touch-icon.png"), u("icons/favicon-48.png")
 ];
@@ -26,12 +27,14 @@ const NETWORK_TIMEOUT_MS = 5000;
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await Promise.all(PRECACHE.map(async (url) => {
+    const add = async (url) => {
       // cache:"reload" bypasses the browser HTTP cache so we never precache a stale copy
       const res = await fetch(new Request(url, { cache: "reload" }));
       if (!res.ok) throw new Error("precache failed: " + url + " " + res.status);
       await cache.put(url, res);
-    }));
+    };
+    await Promise.all(PRECACHE_REQUIRED.map(add));
+    await Promise.all(PRECACHE_OPTIONAL.map((url) => add(url).catch((e) => console.warn("[sw]", e.message))));
     // Deliberately no skipWaiting() here: the page asks for it only when idle (see index.html).
   })());
 });
