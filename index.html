@@ -144,15 +144,26 @@
         </label>
       </div>
 
-      <!-- Media: optional photo and voice note -->
+      <!-- Media: optional photos and voice notes (up to 3 per star, any mix) -->
       <div class="field-group media-fields">
-        <label for="input-photo">photo <span class="optional">(optional)</span></label>
-        <input type="file" id="input-photo" accept="image/jpeg,image/png,image/webp" />
-        <img id="photo-preview" class="media-photo hidden" alt="" />
-        <label for="input-audio">voice note <span class="optional">(optional)</span></label>
-        <input type="file" id="input-audio" accept="audio/*" />
-        <button type="button" id="record-audio-btn" class="btn-media">record a voice note</button>
-        <audio id="audio-preview" class="media-audio hidden" controls></audio>
+        <span class="media-heading">attachments <span class="optional">(optional · up to 3)</span></span>
+        <div class="media-actions">
+          <label class="media-act" for="input-photo">
+            <input type="file" id="input-photo" class="sr-file" accept="image/jpeg,image/png,image/webp" multiple />
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 4.5h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-9a3 3 0 0 1 3-3z"/><path d="M10.5 8.2a3.2 3.2 0 1 0 3.3 4.6 2.6 2.6 0 0 1-3.3-4.6z"/><path d="M16.5 7.3v2.4M15.3 8.5h2.4"/></svg>
+            <span>photos</span>
+          </label>
+          <label class="media-act" for="input-audio">
+            <input type="file" id="input-audio" class="sr-file" accept="audio/*" multiple />
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 10.4a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2z"/><path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M5.6 5.8a9 9 0 0 0 0 12.4M18.4 5.8a9 9 0 0 1 0 12.4"/></svg>
+            <span>voice note</span>
+          </label>
+          <button type="button" id="record-audio-btn" class="media-act" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"/><circle class="rec-dot" cx="12" cy="12" r="3"/></svg>
+            <span id="record-audio-label">record</span>
+          </button>
+        </div>
+        <ul id="media-tray" class="media-tray" aria-label="selected attachments"></ul>
         <p id="media-status" class="error-msg" aria-live="polite"></p>
       </div>
 
