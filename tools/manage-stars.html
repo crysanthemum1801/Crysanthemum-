@@ -29,7 +29,10 @@ select,input[type=password]{background:#12142a;border:1px solid var(--line);bord
 #msg.bad{color:var(--bad)} #msg.ok{color:var(--ok)}
 #work{flex:1;min-height:0;display:flex;position:relative}
 #mapwrap{flex:1;min-width:0;position:relative}
-#map{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;background:radial-gradient(ellipse at 50% 30%,#10132b,#060710)}
+#map{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:grab;background:linear-gradient(#0c0e1e,#060710)}
+#map.rearr{cursor:move;box-shadow:inset 0 0 0 2px rgba(242,201,138,.45)}
+#modeBar{position:absolute;top:10px;left:50%;transform:translateX(-50%);max-width:calc(100% - 20px);display:flex;gap:10px;align-items:center;background:rgba(30,24,16,.92);border:1px solid rgba(242,201,138,.5);color:var(--warn);border-radius:14px;padding:6px 6px 6px 14px;font-size:13px;z-index:3}
+#modeBar button{min-height:32px;flex:none}
 #zoom{position:absolute;left:10px;bottom:max(10px,env(safe-area-inset-bottom));display:flex;gap:6px}
 #zoom button{min-width:40px;padding:0 10px}
 #panel{width:300px;flex:none;border-left:1px solid var(--line);background:var(--card);padding:14px;overflow:auto}
@@ -45,7 +48,7 @@ select,input[type=password]{background:#12142a;border:1px solid var(--line);bord
 .box h2{margin:0 0 8px;font-weight:300;font-size:18px}
 .err{color:var(--bad);min-height:1.4em;font-size:14px}
 [hidden]{display:none!important}
-@media (max-width:700px){#panel{position:absolute;left:0;right:0;bottom:0;width:auto;max-height:52%;border-left:0;border-top:1px solid var(--line);border-radius:16px 16px 0 0}#zoom{bottom:auto;top:10px}}
+@media (max-width:700px){#panel{position:absolute;left:0;right:0;bottom:0;width:auto;max-height:52%;border-left:0;border-top:1px solid var(--line);border-radius:16px 16px 0 0}#zoom{bottom:auto;top:10px}#modeBar{top:56px}}
 </style>
 </head>
 <body>
@@ -55,12 +58,14 @@ select,input[type=password]{background:#12142a;border:1px solid var(--line);bord
   <button id="save" disabled>Save changes</button>
   <button id="discard" class="quiet" disabled>Discard all</button>
   <button id="reload" class="quiet">Reload</button>
+  <button id="rearr" class="quiet" aria-pressed="false">Rearrange</button>
   <button id="leave" class="quiet">Leave</button>
 </header>
 <div id="msg" role="status" aria-live="polite"></div>
 <div id="work">
   <div id="mapwrap">
     <canvas id="map" aria-label="Star map"></canvas>
+    <div id="modeBar" hidden>Rearrange mode: drag stars to move them. Nothing is saved until you press Save changes. <button id="rearrDone">Done</button></div>
     <div id="zoom"><button id="zin" class="quiet" aria-label="Zoom in">+</button><button id="zout" class="quiet" aria-label="Zoom out">−</button><button id="zfit" class="quiet">Fit</button></div>
   </div>
   <aside id="panel" hidden aria-label="Star properties">
@@ -113,13 +118,18 @@ const OPTS = {
   color: ["white", "blue", "lavender", "rose", "amber"],
   aura: ["none", "halo", "radiant"]
 };
-const PAL = { white: "235,238,255", blue: "150,185,255", lavender: "185,160,255", rose: "245,170,185", amber: "250,205,140" };
+// Same [core, glow] palette as the universe (app.js starColorPalette).
+const PAL = { white: ["235,238,255", "180,195,255"], blue: ["190,210,255", "130,170,255"], lavender: ["210,195,255", "170,140,255"], rose: ["255,195,205", "230,150,165"], amber: ["255,225,175", "230,185,110"] };
+const pal = c => PAL[c] || PAL.white;
+// Fixed stars of the universe (hard-coded in app.js). Shown for orientation only; never editable or written.
+const SPECIALS = [{ x: 3000, y: 3000, label: "Big Bang", r: 5.5, glow: 36 }, { x: 3140, y: 2900, label: "Confession", r: 3.5, glow: 22 }];
+const WORLD = 6000;
 const MSG_WRONG = "the stars don't recognize that.", MSG_WAIT = "too many tries. rest a little, then try again.", MSG_FAILED = "the stars can't be reached right now. try again in a moment.";
 
 let stars = new Map();      // id -> { id, title, link, base, cur }
 let skipped = 0, sel = null, saving = false, loading = false, loaded = false, busyOp = false;
 let view = { x: 0, y: 0, k: 1 };
-let dirtyDraw = true;
+let dirtyDraw = true, rearr = false;
 
 const withTimeout = (p, ms) => new Promise((res, rej) => {
   const t = setTimeout(() => rej(Object.assign(new Error("timeout"), { code: "deadline-exceeded" })), ms);
@@ -152,6 +162,7 @@ function refreshUI(){
   $("discard").disabled = !n || lock;
   $("reload").disabled = lock;
   $("leave").disabled = saving;
+  $("rearr").disabled = lock || !loaded;
   fillPanel();
   dirtyDraw = true;
 }
@@ -204,7 +215,7 @@ function ask(title, body, buttons){
       b.onclick = () => { $("ov").hidden = true; res(key); };
       box.appendChild(b);
     }
-    $("ov").hidden = false; box.firstChild.focus();
+    $("ov").hidden = false; (box.querySelector(".quiet") || box.firstChild).focus();   // never default-focus Save or Delete
   });
 }
 const pickFields = b => { const o = {}; for (const k of FIELDS) o[k] = b[k]; return o; };
@@ -215,7 +226,7 @@ async function resolvePending(action){
     [["save", "Save"], ["discard", "Discard", "danger"], ["cancel", "Stay", "quiet"]]);
   if (c === "cancel") return false;
   if (c === "discard"){ for (const s of stars.values()) Object.assign(s.cur, pickFields(s.base)); refreshUI(); return true; }
-  await save();
+  await save(true);
   return dirtyIds().length === 0;
 }
 
@@ -232,7 +243,7 @@ async function load(){
       const base = { x: v.x, y: v.y,
         size: norm("size", v.size), color: norm("color", v.color), aura: norm("aura", v.aura),
         isCelestial: v.isCelestial === true, birthdayNebula: v.birthdayNebula === true };
-      next.set(d.id, { id: d.id, title: typeof v.title === "string" ? v.title : "", link: typeof v.linkedStarId === "string" ? v.linkedStarId : null, base, cur: pickFields(base) });
+      next.set(d.id, { id: d.id, title: typeof v.title === "string" ? v.title : "", link: typeof v.linkedStarId === "string" ? v.linkedStarId : null, ts: num(v.timestamp) ? v.timestamp : 0, base, cur: pickFields(base) });
     });
     stars = next; loaded = true; lastFailed = false;
     if (sel && !stars.has(sel)) sel = null;
@@ -245,16 +256,19 @@ async function load(){
 }
 
 /* ───── save ───── */
-async function save(){
-  if (saving || busyOp) return;
+async function save(explicit){
+  if (explicit !== true || saving || busyOp) return;   // only an explicit Save click/choice may write
   const ids = dirtyIds(); if (!ids.length) return;
+  if (navigator.onLine === false){ lastFailed = true; msg("You're offline, so nothing was saved. Your changes are kept; tap Save changes when you're back online.", "bad"); refreshUI(); return; }
   saving = true; lastFailed = false; refreshUI(); msg("");
   let ok = 0, conflict = 0, missing = 0, other = 0, auth401 = false;
   for (const id of ids){
     const s = stars.get(id); const ch = changes(s);
     if (!Object.keys(ch).length) continue;
+    const ctl = { dead: false };
     try {
       await withTimeout(runTransaction(db, async tx => {
+        if (ctl.dead) throw { code: "chr/aborted" };
         const ref = doc(db, "stars", id);
         const snap = await tx.get(ref);
         if (!snap.exists()) throw { code: "chr/missing" };
@@ -263,10 +277,12 @@ async function save(){
           const sv = k === "isCelestial" || k === "birthdayNebula" ? d[k] === true : norm(k, d[k]);
           if (sv !== ch[k] && sv !== s.base[k]) throw { code: "chr/conflict" };   // changed elsewhere since loaded
         }
+        if (ctl.dead) throw { code: "chr/aborted" };
         tx.update(ref, ch);                                                       // only the changed fields
       }), 20000);
       Object.assign(s.base, ch); ok++;
     } catch (e){
+      ctl.dead = true;                                                            // a timed-out attempt must never commit later
       const c = errCode(e);
       if (c === "chr/conflict") conflict++; else if (c === "chr/missing") missing++; else { other++; if (isAuthErr(e)) auth401 = true; }
     }
@@ -281,7 +297,7 @@ async function save(){
   refreshUI();
   if (auth401) showLogin();
 }
-$("save").onclick = save;
+$("save").onclick = e => { if (e.isTrusted) save(true); };
 $("discard").onclick = async () => {
   if (await ask("Discard all changes?", "All unsaved position and appearance changes will be lost.", [["y", "Discard", "danger"], ["n", "Keep", "quiet"]]) === "y"){
     for (const s of stars.values()) Object.assign(s.cur, pickFields(s.base));
@@ -300,6 +316,7 @@ $("del").onclick = async () => {
   const c = await ask("Delete " + name + "?", "This permanently removes this one star and its constellation links. Connected stars stay as they are. Photos and audio files are not deleted. This cannot be undone.",
     [["n", "Keep star", "quiet"], ["y", "Delete star", "danger"]]);
   if (c !== "y") return;
+  if (navigator.onLine === false){ msg("You're offline, so nothing was deleted.", "bad"); return; }
   busyOp = true; refreshUI(); msg("Deleting…");
   const id = s.id;
   try {
@@ -369,104 +386,158 @@ $("revert").onclick = () => { const s = stars.get(sel); if (s){ Object.assign(s.
 /* ───── map ───── */
 const cv = $("map"), cx = cv.getContext("2d");
 let W = 0, H = 0, dpr = 1;
-function resize(){ dpr = devicePixelRatio || 1; const r = cv.getBoundingClientRect(); W = r.width; H = r.height; cv.width = Math.max(1, Math.round(W * dpr)); cv.height = Math.max(1, Math.round(H * dpr)); dirtyDraw = true; }
+function resize(){
+  const r = cv.getBoundingClientRect(), nw = Math.max(1, r.width), nh = Math.max(1, r.height), nd = devicePixelRatio || 1;
+  if (nw === W && nh === H && nd === dpr) return;
+  W = nw; H = nh; dpr = nd;                         // the view is kept as is, so stars never shift when the panel opens
+  cv.width = Math.max(1, Math.round(W * dpr)); cv.height = Math.max(1, Math.round(H * dpr));
+  draw();                                           // resizing clears the canvas: redraw in the same frame
+}
 addEventListener("resize", resize);
 const w2s = (x, y) => [x * view.k + view.x, y * view.k + view.y];
 const s2w = (x, y) => [(x - view.x) / view.k, (y - view.y) / view.k];
 function fit(){
-  if (!W) resize();
-  const a = [...stars.values()];
-  if (!a.length){ view = { x: W / 2, y: H / 2, k: 1 }; dirtyDraw = true; return; }
+  resize();
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const s of a){ x0 = Math.min(x0, s.cur.x); x1 = Math.max(x1, s.cur.x); y0 = Math.min(y0, s.cur.y); y1 = Math.max(y1, s.cur.y); }
-  const pad = 50, k = Math.min((W - pad * 2) / Math.max(1, x1 - x0), (H - pad * 2) / Math.max(1, y1 - y0), 4);
-  view.k = Math.max(k, 0.001); view.x = W / 2 - (x0 + x1) / 2 * view.k; view.y = H / 2 - (y0 + y1) / 2 * view.k; dirtyDraw = true;
+  for (const p of [...stars.values()].map(s => s.cur).concat(SPECIALS)){ x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+  const pad = 60, k = Math.min((W - pad * 2) / Math.max(1, x1 - x0), (H - pad * 2) / Math.max(1, y1 - y0), 2);
+  view.k = Math.max(k, 0.02); view.x = W / 2 - (x0 + x1) / 2 * view.k; view.y = H / 2 - (y0 + y1) / 2 * view.k; dirtyDraw = true;
 }
 function zoomAt(px, py, f){
-  const k = Math.min(Math.max(view.k * f, 0.0005), 200);
+  const k = Math.min(Math.max(view.k * f, 0.02), 12);
   const [wx, wy] = s2w(px, py); view.k = k; view.x = px - wx * k; view.y = py - wy * k; dirtyDraw = true;
 }
 $("zin").onclick = () => zoomAt(W / 2, H / 2, 1.4);
 $("zout").onclick = () => zoomAt(W / 2, H / 2, 1 / 1.4);
 $("zfit").onclick = fit;
-const radius = s => Math.min(11, 3.6 * (s.cur.isCelestial ? 2.2 : s.cur.size === "tiny" ? 0.6 : s.cur.size === "big" ? 2.2 : 1));
+const SIZE_SCALE = c => c.isCelestial ? 4.2 : c.size === "tiny" ? 0.55 : c.size === "big" ? 2.6 : 1;   // same scales as the universe
+function metrics(s, now){
+  const sc = SIZE_SCALE(s.cur), kk = view.k;
+  const ab = Math.min(0.28, Math.log1p(Math.max(0, now - s.ts) / 86400000) * 0.07) + (s.cur.isCelestial ? 0.22 : 0);
+  return { sc, ab,
+    gR: Math.min(500, Math.max((12 + ab * 40) * sc * kk, 7 * Math.pow(sc, 0.8))),
+    coreR: Math.max(1.8 * sc * kk, 1.6 * Math.pow(sc, 0.6)) };
+}
+function setRearr(on){
+  if (on && (saving || busyOp || loading || !loaded)) return;
+  rearr = !!on;
+  $("rearr").className = rearr ? "" : "quiet"; $("rearr").setAttribute("aria-pressed", String(rearr));
+  $("rearr").textContent = rearr ? "Rearranging" : "Rearrange";
+  $("modeBar").hidden = !rearr; cv.classList.toggle("rearr", rearr); dirtyDraw = true;
+}
+$("rearr").onclick = () => setRearr(!rearr);
+$("rearrDone").onclick = () => setRearr(false);
+addEventListener("keydown", e => { if (e.key === "Escape" && rearr && $("ov").hidden && $("login").hidden) setRearr(false); });
 
+function drawStar(s, now){
+  const [x, y] = w2s(s.cur.x, s.cur.y), m = metrics(s, now), kk = view.k, c = s.cur;
+  const reach = Math.max(m.gR, c.birthdayNebula ? Math.max(80 * kk, 16) : 0, 22 * m.sc * kk + 8) + 20;
+  if (x < -reach || y < -reach || x > W + reach || y > H + reach) return;
+  const [core, glow] = pal(c.color);
+  if (c.birthdayNebula){
+    const nR = Math.max(80 * kk, 16), n = cx.createRadialGradient(x, y, 0, x, y, nR);
+    n.addColorStop(0, "rgba(225,220,255,.16)"); n.addColorStop(1, "rgba(225,220,255,0)");
+    cx.fillStyle = n; cx.beginPath(); cx.arc(x, y, nR, 0, 6.2832); cx.fill();
+    cx.strokeStyle = "rgba(225,220,255,.22)"; cx.lineWidth = 1; cx.beginPath(); cx.arc(x, y, nR, 0, 6.2832); cx.stroke();
+  }
+  const g = cx.createRadialGradient(x, y, 0, x, y, m.gR);
+  g.addColorStop(0, "rgba(" + glow + "," + Math.min(0.6, 0.12 + m.ab + 0.2) + ")"); g.addColorStop(1, "rgba(" + glow + ",0)");
+  cx.fillStyle = g; cx.beginPath(); cx.arc(x, y, m.gR, 0, 6.2832); cx.fill();
+  cx.lineWidth = 1; cx.strokeStyle = "rgba(" + glow + ",.6)";
+  if (c.aura === "halo"){ cx.beginPath(); cx.arc(x, y, Math.max((7 + m.ab * 8) * m.sc * kk, m.coreR + 4), 0, 6.2832); cx.stroke(); }
+  if (c.aura === "radiant"){ const L = Math.max(18 * m.sc * kk, m.coreR + 8); cx.beginPath(); cx.moveTo(x - L, y); cx.lineTo(x + L, y); cx.moveTo(x, y - L); cx.lineTo(x, y + L); cx.stroke(); }
+  if (c.isCelestial){ const L = Math.max(22 * m.sc * kk, m.coreR + 12); cx.beginPath(); for (let i = 0; i < 6; i++){ const a = i * 1.0472; cx.moveTo(x, y); cx.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L); } cx.stroke(); }
+  cx.fillStyle = "rgb(" + core + ")"; cx.beginPath(); cx.arc(x, y, m.coreR, 0, 6.2832); cx.fill();
+  if (rearr){ cx.strokeStyle = "rgba(255,255,255,.22)"; cx.beginPath(); cx.arc(x, y, m.coreR + 6, 0, 6.2832); cx.stroke(); }
+  if (Object.keys(changes(s)).length){ cx.fillStyle = "#f2c98a"; cx.beginPath(); cx.arc(x + m.coreR + 5, y - m.coreR - 5, 2.5, 0, 6.2832); cx.fill(); }
+  if (s.id === sel){ cx.strokeStyle = "#fff"; cx.lineWidth = 1.5; cx.beginPath(); cx.arc(x, y, Math.max(m.coreR + 8, 12), 0, 6.2832); cx.stroke(); }
+}
 function draw(){
   dirtyDraw = false;
-  cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.clearRect(0, 0, W, H);
-  cx.strokeStyle = "rgba(180,195,255,.22)"; cx.lineWidth = 1;
+  cx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0); cx.clearRect(0, 0, W, H);
+  const now = Date.now(), kk = view.k, o = w2s(0, 0);
+  cx.strokeStyle = "rgba(190,180,255,.10)"; cx.lineWidth = 1; cx.setLineDash([6, 6]); cx.strokeRect(o[0], o[1], WORLD * kk, WORLD * kk); cx.setLineDash([]);   // universe area (stars may lie outside)
+  cx.strokeStyle = "rgba(190,205,255,.28)"; cx.lineWidth = 0.8;
   for (const s of stars.values()){
     const p = s.link && stars.get(s.link);
     if (!p || (p.link === s.id && s.id > p.id)) continue;
     const a = w2s(s.cur.x, s.cur.y), b = w2s(p.cur.x, p.cur.y);
     cx.beginPath(); cx.moveTo(a[0], a[1]); cx.lineTo(b[0], b[1]); cx.stroke();
   }
-  for (const s of stars.values()){
-    const [x, y] = w2s(s.cur.x, s.cur.y);
-    if (x < -40 || y < -40 || x > W + 40 || y > H + 40) continue;
-    const c = PAL[s.cur.color] || PAL.white, r = radius(s), changed = Object.keys(changes(s)).length > 0;
-    const g = cx.createRadialGradient(x, y, 0, x, y, r * 3.2);
-    g.addColorStop(0, "rgba(" + c + ",.45)"); g.addColorStop(1, "rgba(" + c + ",0)");
-    cx.fillStyle = g; cx.beginPath(); cx.arc(x, y, r * 3.2, 0, 6.2832); cx.fill();
-    cx.fillStyle = "rgb(" + c + ")"; cx.beginPath(); cx.arc(x, y, r, 0, 6.2832); cx.fill();
-    cx.strokeStyle = "rgba(" + c + ",.7)"; cx.lineWidth = 1;
-    if (s.cur.aura === "halo"){ cx.beginPath(); cx.arc(x, y, r + 5, 0, 6.2832); cx.stroke(); }
-    if (s.cur.aura === "radiant"){ cx.beginPath(); cx.moveTo(x - r - 8, y); cx.lineTo(x + r + 8, y); cx.moveTo(x, y - r - 8); cx.lineTo(x, y + r + 8); cx.stroke(); }
-    if (s.cur.isCelestial){ cx.beginPath(); for (let i = 0; i < 6; i++){ const a = i * 1.0472; cx.moveTo(x, y); cx.lineTo(x + Math.cos(a) * (r + 9), y + Math.sin(a) * (r + 9)); } cx.stroke(); }
-    if (s.cur.birthdayNebula){ cx.setLineDash([3, 3]); cx.beginPath(); cx.arc(x, y, r + 14, 0, 6.2832); cx.stroke(); cx.setLineDash([]); }
-    if (changed){ cx.fillStyle = "#f2c98a"; cx.beginPath(); cx.arc(x + r + 3, y - r - 3, 2.5, 0, 6.2832); cx.fill(); }
-    if (s.id === sel){ cx.strokeStyle = "#fff"; cx.lineWidth = 1.5; cx.beginPath(); cx.arc(x, y, r + 7, 0, 6.2832); cx.stroke(); }
+  for (const p of SPECIALS){
+    const [x, y] = w2s(p.x, p.y), gr = Math.max(p.glow * kk, 10), g = cx.createRadialGradient(x, y, 0, x, y, gr);
+    g.addColorStop(0, "rgba(170,180,245,.28)"); g.addColorStop(1, "rgba(170,180,245,0)");
+    cx.fillStyle = g; cx.beginPath(); cx.arc(x, y, gr, 0, 6.2832); cx.fill();
+    cx.fillStyle = "rgba(220,225,255,.9)"; cx.beginPath(); cx.arc(x, y, Math.max(p.r * kk, 2.5), 0, 6.2832); cx.fill();
+    cx.font = "300 11px sans-serif"; cx.fillStyle = "rgba(180,175,240,.55)"; cx.fillText(p.label, x + 8, y - 8);
   }
+  for (const s of stars.values()) if (s.id !== sel) drawStar(s, now);
+  const cs = stars.get(sel); if (cs) drawStar(cs, now);
 }
 (function loop(){ if (dirtyDraw) draw(); requestAnimationFrame(loop); })();
 
-function hit(px, py){
-  let best = null, bd = 18 * 18;
+function hit(px, py, touch){
+  const now = Date.now(); let best = null, bd = Infinity;
   for (const s of stars.values()){
-    const [x, y] = w2s(s.cur.x, s.cur.y), d = (x - px) ** 2 + (y - py) ** 2;
-    if (d <= bd){ bd = d; best = s; }
+    const [x, y] = w2s(s.cur.x, s.cur.y), d = Math.hypot(x - px, y - py);
+    if (d <= Math.max(touch ? 22 : 14, metrics(s, now).coreR + 6) && d < bd){ bd = d; best = s; }
   }
   return best;
 }
-const ptrs = new Map(); let drag = null, pinch = null, moved = false;
+const TAP_PX = 6;      // movement below this is a tap (select), never a drag
+const ptrs = new Map(); let gest = null, pinch = null;
 const pos = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+cv.addEventListener("contextmenu", e => e.preventDefault());
 cv.addEventListener("pointerdown", e => {
-  cv.setPointerCapture(e.pointerId);
-  const [px, py] = pos(e); ptrs.set(e.pointerId, [px, py]); moved = false;
-  if (ptrs.size === 2){
-    drag = null; const [a, b] = [...ptrs.values()];
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+  const [px, py] = pos(e); ptrs.set(e.pointerId, [px, py]);
+  if (ptrs.size >= 2){
+    if (gest && gest.dragging){ const s = stars.get(gest.s); if (s){ s.cur.x = gest.orig.x; s.cur.y = gest.orig.y; } refreshUI(); }
+    gest = null; const [a, b] = [...ptrs.values()];
     pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1 }; return;
   }
-  const s = !saving && !busyOp ? hit(px, py) : null;
-  if (s){
-    if (sel !== s.id){ sel = s.id; refreshUI(); }
-    const [wx, wy] = s2w(px, py);
-    drag = { type: "star", id: s.id, ox: s.cur.x - wx, oy: s.cur.y - wy };
-  } else drag = { type: "pan", lx: px, ly: py };
+  const s = hit(px, py, e.pointerType !== "mouse");
+  const canDrag = !!(rearr && s && loaded && !saving && !busyOp);
+  gest = { id: e.pointerId, sx: px, sy: py, lx: px, ly: py, s: s ? s.id : null, canDrag, dragging: false, panning: false, ox: 0, oy: 0, orig: null };
+  if (canDrag){ const [wx, wy] = s2w(px, py); gest.ox = s.cur.x - wx; gest.oy = s.cur.y - wy; gest.orig = { x: s.cur.x, y: s.cur.y }; }
 });
 cv.addEventListener("pointermove", e => {
   if (!ptrs.has(e.pointerId)) return;
-  const [px, py] = pos(e); ptrs.set(e.pointerId, [px, py]); moved = true;
-  if (pinch && ptrs.size >= 2){
-    const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1;
-    zoomAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, d / pinch.d); pinch.d = d; return;
+  const [px, py] = pos(e); ptrs.set(e.pointerId, [px, py]);
+  if (pinch){
+    if (ptrs.size >= 2){ const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1; zoomAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, d / pinch.d); pinch.d = d; }
+    return;
   }
-  if (!drag) return;
-  if (drag.type === "pan"){ view.x += px - drag.lx; view.y += py - drag.ly; drag.lx = px; drag.ly = py; dirtyDraw = true; }
-  else { const s = stars.get(drag.id); if (s && !saving){ const [wx, wy] = s2w(px, py); s.cur.x = wx + drag.ox; s.cur.y = wy + drag.oy; dirtyDraw = true; } }
+  if (!gest || gest.id !== e.pointerId) return;
+  if (!gest.dragging && !gest.panning){
+    if (Math.hypot(px - gest.sx, py - gest.sy) < TAP_PX) return;
+    if (gest.canDrag){ gest.dragging = true; if (sel !== gest.s){ sel = gest.s; refreshUI(); } } else gest.panning = true;
+  }
+  if (gest.dragging){
+    const s = stars.get(gest.s); if (!s || saving || busyOp) return;
+    const [wx, wy] = s2w(px, py); s.cur.x = wx + gest.ox; s.cur.y = wy + gest.oy;   // temporary local coordinates only
+    if (s.id === sel) $("pPos").textContent = "x " + r1(s.cur.x) + " · y " + r1(s.cur.y) + " · unsaved";
+    dirtyDraw = true;
+  } else { view.x += px - gest.lx; view.y += py - gest.ly; gest.lx = px; gest.ly = py; dirtyDraw = true; }
 });
-function endPtr(e){
-  if (!ptrs.has(e.pointerId)) return;
-  ptrs.delete(e.pointerId);
-  if (ptrs.size < 2) pinch = null;
-  if (drag && drag.type === "star"){ const s = stars.get(drag.id); if (s){ s.cur.x = r1(s.cur.x); s.cur.y = r1(s.cur.y); } refreshUI(); }
-  else if (drag && drag.type === "pan" && !moved && sel){ sel = null; refreshUI(); }
-  if (!ptrs.size) drag = null;
+function endPtr(e, cancelled){
+  if (!ptrs.delete(e.pointerId)) return;
+  if (pinch){ if (ptrs.size < 2) pinch = null; gest = null; return; }
+  const gs = gest; gest = null;
+  if (!gs || gs.id !== e.pointerId) return;
+  if (gs.dragging){
+    const s = stars.get(gs.s);
+    if (s){ if (cancelled){ s.cur.x = gs.orig.x; s.cur.y = gs.orig.y; } else { s.cur.x = r1(s.cur.x); s.cur.y = r1(s.cur.y); } }
+    refreshUI();
+  } else if (!gs.panning && !cancelled && gs.s !== sel){ sel = gs.s; refreshUI(); }   // tap: select the star, or deselect on empty space
 }
-cv.addEventListener("pointerup", endPtr); cv.addEventListener("pointercancel", endPtr);
-cv.addEventListener("wheel", e => { e.preventDefault(); const [px, py] = pos(e); zoomAt(px, py, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+cv.addEventListener("pointerup", e => endPtr(e, false)); cv.addEventListener("pointercancel", e => endPtr(e, true));
+addEventListener("blur", () => { for (const id of [...ptrs.keys()]) endPtr({ pointerId: id }, true); });
+cv.addEventListener("wheel", e => { e.preventDefault(); const [px, py] = pos(e); const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY; zoomAt(px, py, Math.exp(-Math.max(-120, Math.min(120, dy)) * 0.0015)); }, { passive: false });
 
 /* ───── start ───── */
+new ResizeObserver(resize).observe($("mapwrap"));
 resize(); refreshUI();
 (async () => {
   try {
