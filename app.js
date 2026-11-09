@@ -542,6 +542,9 @@ function renderLoop(ts) {
   // V3.1: Big Bang particle field (drawn once per frame, not per star)
   drawBigBangParticles(ts);
 
+    // Realistic close-binary (Big Bang × Confession) — visual layer only
+  drawBinarySystem(ts);
+
   // Draw memory stars
   for (const star of stars) {
     drawStar(star, ts);
@@ -679,10 +682,8 @@ function drawBinaryThreads(ts) {
 function drawStar(star, ts) {
   const t = ts * 0.001;
 
-  if (star.type === "bigbang") {
-    drawBigBang(star, t);
-  } else if (star.type === "confession") {
-    drawConfessionStar(star, t);
+    if (star.type === "bigbang" || star.type === "confession") {
+    return; // rendered by drawBinarySystem()
   } else {
     drawMemoryStar(star, ts);
   }
@@ -744,6 +745,235 @@ function drawConfessionStar(star, t) {
   ctx.fillStyle = `rgba(180,175,240,0.5)`;
   ctx.textAlign = "center";
   ctx.fillText("Confession", star.x, star.y + 16);
+}
+
+// ─────────────────────────────────────────────
+//  BIG BANG × CONFESSION — VISUAL CLOSE BINARY
+//  Render-layer only. Saved coordinates are never modified or written.
+// ─────────────────────────────────────────────
+var BIN = {
+  period: 150000,           // ms, shared by both stars
+  cosI: 0.88, sinI: 0.475,  // slight orbital inclination
+  tilt: -0.32,              // orbit rotation on screen (rad)
+  staticTh: 0.9,            // static phase for reduced motion
+  bb: { R: 70, r: 9.5, ph: 0,       lonOff: 0.0, rot:  0.05,
+        core: "255,247,226", mid: "250,224,166", edge: "206,150,78",
+        glow: "255,214,140", bright: "255,250,235", dark: "150,95,40",
+        label: "rgba(180,190,240,0.55)", text: "Big Bang", fs: 9 },
+  cf: { R: 84, r: 7.6, ph: Math.PI, lonOff: 2.3, rot: -0.07,
+        core: "246,249,255", mid: "216,229,255", edge: "148,174,228",
+        glow: "190,210,255", bright: "255,255,255", dark: "90,115,175",
+        label: "rgba(180,175,240,0.5)", text: "Confession", fs: 8 }
+};
+var binarySpots = null;
+var binaryReduceMotion = false;
+try {
+  var binaryMQ = window.matchMedia("(prefers-reduced-motion: reduce)");
+  binaryReduceMotion = binaryMQ.matches;
+  var binaryMQHandler = function (e) { binaryReduceMotion = e.matches; };
+  if (binaryMQ.addEventListener) binaryMQ.addEventListener("change", binaryMQHandler);
+  else if (binaryMQ.addListener) binaryMQ.addListener(binaryMQHandler);
+} catch (e) { binaryReduceMotion = false; }
+
+function binaryCentre() {
+  const b = SPECIAL_STARS.find(s => s.id === "bigbang");
+  const c = SPECIAL_STARS.find(s => s.id === "confession");
+  return { b: b, c: c, cx: (b.x + c.x) / 2, cy: (b.y + c.y) / 2 };
+}
+
+function binaryTheta(now) {
+  return binaryReduceMotion ? BIN.staticTh : ((now % BIN.period) / BIN.period) * Math.PI * 2;
+}
+
+function binaryOrbitPoint(R, a, cx, cy) {
+  const s = Math.sin(a);
+  const ox = R * Math.cos(a);
+  const oy = R * s * BIN.cosI;
+  const ct = Math.cos(BIN.tilt), st = Math.sin(BIN.tilt);
+  return { x: cx + ox * ct - oy * st, y: cy + ox * st + oy * ct, z: R * s * BIN.sinI };
+}
+
+// Animated visual position of Big Bang / Confession (used for hit detection)
+function binaryVisualPos(star) {
+  try {
+    const k = binaryCentre();
+    const spec = star.type === "bigbang" ? BIN.bb : BIN.cf;
+    return binaryOrbitPoint(spec.R, binaryTheta(Date.now()) + spec.ph, k.cx, k.cy);
+  } catch (e) {
+    return star;
+  }
+}
+
+function binaryGetSpots() {
+  if (binarySpots) return binarySpots;
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  binarySpots = [];
+  for (let i = 0; i < 14; i++) {
+    binarySpots.push({
+      lon: rnd() * Math.PI * 2,
+      lat: (rnd() - 0.5) * 2.2,
+      size: 0.10 + rnd() * 0.16,
+      a: 0.05 + rnd() * 0.08,
+      bright: rnd() < 0.4
+    });
+  }
+  return binarySpots;
+}
+
+function binaryDrawTrail(spec, th, k) {
+  if (binaryReduceMotion) return;
+  const N = 14, span = 0.85;
+  let prev = binaryOrbitPoint(spec.R, th + spec.ph, k.cx, k.cy);
+  ctx.lineWidth = 1.1 / cam.zoom;
+  ctx.lineCap = "round";
+  for (let i = 1; i <= N; i++) {
+    const p = binaryOrbitPoint(spec.R, th + spec.ph - span * i / N, k.cx, k.cy);
+    const a = 0.17 * Math.pow(1 - (i - 1) / N, 2);
+    ctx.beginPath();
+    ctx.moveTo(prev.x, prev.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.strokeStyle = `rgba(${spec.glow},${a})`;
+    ctx.stroke();
+    prev = p;
+  }
+}
+
+function binaryDrawBody(p, spec, o, now, dimOv, sc) {
+  const R = Math.max(spec.r * sc, 3.4 / cam.zoom);
+  const x = p.x, y = p.y;
+
+  // Restrained corona
+  ctx.globalCompositeOperation = "lighter";
+  const cr = R * 3.6;
+  let g = ctx.createRadialGradient(x, y, R * 0.7, x, y, cr);
+  g.addColorStop(0,    `rgba(${spec.glow},${0.20 * (1 - 0.4 * dimOv)})`);
+  g.addColorStop(0.35, `rgba(${spec.glow},0.05)`);
+  g.addColorStop(1,    `rgba(${spec.glow},0)`);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, cr, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
+
+  // Stellar body (limb-darkened sphere, clipped detail)
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, R, 0, Math.PI * 2);
+  ctx.clip();
+  g = ctx.createRadialGradient(x, y, 0, x, y, R);
+  g.addColorStop(0,   `rgb(${spec.core})`);
+  g.addColorStop(0.6, `rgb(${spec.mid})`);
+  g.addColorStop(1,   `rgb(${spec.edge})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(x - R, y - R, R * 2, R * 2);
+
+  // Subtle rotating surface variation (more detail when zoomed in)
+  const spots = binaryGetSpots();
+  const n = cam.zoom > 1.4 ? spots.length : cam.zoom > 0.8 ? 8 : 4;
+  const rot = (now / 1000) * spec.rot;
+  for (let i = 0; i < n; i++) {
+    const s = spots[i];
+    const lon = s.lon + spec.lonOff + rot;
+    const c = Math.cos(s.lat);
+    const vis = c * Math.cos(lon);
+    if (vis < 0.08) continue;
+    const px = x + R * c * Math.sin(lon);
+    const py = y + R * Math.sin(s.lat);
+    ctx.beginPath();
+    ctx.arc(px, py, s.size * R * (0.5 + 0.5 * vis), 0, Math.PI * 2);
+    ctx.fillStyle = s.bright
+      ? `rgba(${spec.bright},${s.a * vis})`
+      : `rgba(${spec.dark},${s.a * 1.3 * vis})`;
+    ctx.fill();
+  }
+
+  // Light interaction: faint tint on the side facing the companion
+  const dx = o.x - x, dy = o.y - y;
+  const d = Math.hypot(dx, dy) || 1;
+  const og = ctx.createRadialGradient(x + dx / d * R * 0.9, y + dy / d * R * 0.9, 0,
+                                      x + dx / d * R * 0.9, y + dy / d * R * 0.9, R * 1.4);
+  og.addColorStop(0, `rgba(${o.glow},0.12)`);
+  og.addColorStop(1, `rgba(${o.glow},0)`);
+  ctx.fillStyle = og;
+  ctx.fillRect(x - R, y - R, R * 2, R * 2);
+
+  // Subtle illumination change while partially eclipsed
+  if (dimOv > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${0.22 * dimOv})`;
+    ctx.fillRect(x - R, y - R, R * 2, R * 2);
+  }
+  ctx.restore();
+  return R;
+}
+
+function binaryDrawFallback() {
+  for (const s of SPECIAL_STARS) {
+    if (s.type !== "bigbang" && s.type !== "confession") continue;
+    const spec = s.type === "bigbang" ? BIN.bb : BIN.cf;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, Math.max(spec.r * 0.6, 3.4 / cam.zoom), 0, Math.PI * 2);
+    ctx.fillStyle = `rgb(${spec.mid})`;
+    ctx.fill();
+  }
+}
+
+function drawBinarySystem(ts) {
+  try {
+    const k = binaryCentre();
+    const vw = canvas.width / cam.zoom, vh = canvas.height / cam.zoom;
+    const left = cam.x + canvas.width / 2 - vw / 2;
+    const top  = cam.y + canvas.height / 2 - vh / 2;
+    const m = 260;
+    if (k.cx < left - m || k.cx > left + vw + m || k.cy < top - m || k.cy > top + vh + m) return;
+
+    const now = Date.now();
+    const th = binaryTheta(now);
+    const pa = binaryOrbitPoint(BIN.bb.R, th + BIN.bb.ph, k.cx, k.cy);
+    const pb = binaryOrbitPoint(BIN.cf.R, th + BIN.cf.ph, k.cx, k.cy);
+    const sa = 1 + pa.z / 500, sb = 1 + pb.z / 500;
+
+    // Soft local illumination
+    const lg = ctx.createRadialGradient(k.cx, k.cy, 0, k.cx, k.cy, 170);
+    lg.addColorStop(0, "rgba(235,228,215,0.055)");
+    lg.addColorStop(1, "rgba(235,228,215,0)");
+    ctx.fillStyle = lg;
+    ctx.beginPath();
+    ctx.arc(k.cx, k.cy, 170, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fading orbital traces
+    binaryDrawTrail(BIN.bb, th, k);
+    binaryDrawTrail(BIN.cf, th, k);
+
+    // Eclipse overlap (only when geometry truly overlaps)
+    const rA = Math.max(BIN.bb.r * sa, 3.4 / cam.zoom);
+    const rB = Math.max(BIN.cf.r * sb, 3.4 / cam.zoom);
+    const dist = Math.hypot(pa.x - pb.x, pa.y - pb.y);
+    const ov = dist < rA + rB ? 1 - dist / (rA + rB) : 0;
+
+    // Depth ordering: smaller z (farther) is drawn first, nearer occludes it
+    let rr;
+    if (pa.z <= pb.z) {
+      rr = [binaryDrawBody(pa, BIN.bb, { x: pb.x, y: pb.y, glow: BIN.cf.glow }, now, ov, sa),
+            binaryDrawBody(pb, BIN.cf, { x: pa.x, y: pa.y, glow: BIN.bb.glow }, now, 0, sb)];
+    } else {
+      rr = [0, 0];
+      rr[1] = binaryDrawBody(pb, BIN.cf, { x: pa.x, y: pa.y, glow: BIN.bb.glow }, now, ov, sb);
+      rr[0] = binaryDrawBody(pa, BIN.bb, { x: pb.x, y: pb.y, glow: BIN.cf.glow }, now, 0, sa);
+    }
+
+    // Labels
+    ctx.textAlign = "center";
+    ctx.font = `300 ${BIN.bb.fs}px 'Inter', sans-serif`;
+    ctx.fillStyle = BIN.bb.label;
+    ctx.fillText(BIN.bb.text, pa.x, pa.y + rr[0] + 13);
+    ctx.font = `300 ${BIN.cf.fs}px 'Inter', sans-serif`;
+    ctx.fillStyle = BIN.cf.label;
+    ctx.fillText(BIN.cf.text, pb.x, pb.y + rr[1] + 12);
+  } catch (e) {
+    binaryDrawFallback();
+  }
 }
 
 function drawMemoryStar(star, ts) {
@@ -1448,7 +1678,8 @@ function findStarAtWorld(wx, wy) {
                  s.type === "confession" ? 16 / cam.zoom :
                  s.birthdayNebula === true ? NEBULA_VISUAL_RADIUS / cam.zoom :
                  tapRadiusWorld;
-    if (distWorld(wx, wy, s.x, s.y) < hitR) return s;
+        const hp = (s.type === "bigbang" || s.type === "confession") ? binaryVisualPos(s) : s;
+    if (distWorld(wx, wy, hp.x, hp.y) < hitR) return s;
   }
   return null;
 }
