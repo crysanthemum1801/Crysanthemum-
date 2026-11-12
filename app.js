@@ -839,7 +839,7 @@ function binaryGetParts() {
     const ring = i % 3 === 0;
     binaryParts.push({
       ring: ring,
-      rho: ring ? BIN.ringR + (rnd() - 0.5) * 8 : 30 + rnd() * 110,
+            rho: ring ? BIN.ringR + (rnd() - 0.5) * 8 : (i % 4 === 1 ? 40 + rnd() * 48 : 108 + rnd() * 70),
       a0: rnd() * Math.PI * 2,
       sp: ring ? 0.10 + rnd() * 0.06 : (0.03 + rnd() * 0.06) * (rnd() < 0.5 ? 1 : -1),
       wob: ring ? 0 : 3 + rnd() * 6,
@@ -867,11 +867,11 @@ var BENV_LAYERS = [
   { f: 0.70, n:  60, ns: 3, r: [300, 470], th: [40, 90], ci: [0.50, 0.85], sp: [0.006, 0.014], dir: -1, retro: 0.25, brk: 0.5,  sz: [0.30, 0.60], big: 0,    bigSz: [0, 0],     al: [0.10, 0.22], neu: 1.0,  dr: 10, wa: 18, glim: 0.05, front: 0 },
   { f: 0.80, n:  70, ns: 4, r: [220, 380], th: [35, 80], ci: [0.45, 0.80], sp: [0.012, 0.024], dir:  1, retro: 0.30, brk: 0.5,  sz: [0.35, 0.80], big: 0.04, bigSz: [1.2, 1.8], al: [0.12, 0.28], neu: 0.8,  dr:  9, wa: 16, glim: 0.06, front: 0 },
   { f: 0.88, n:  90, ns: 4, r: [140, 260], th: [26, 56], ci: [0.40, 0.85], sp: [0.025, 0.050], dir: -1, retro: 0.30, brk: 0.45, sz: [0.40, 1.00], big: 0.05, bigSz: [1.4, 2.0], al: [0.16, 0.36], neu: 0.45, dr:  8, wa: 13, glim: 0.08, front: 0 },
-  { f: 0.95, n: 110, ns: 5, r: [110, 200], th: [ 3,  9], ci: [0.30, 0.90], sp: [0.045, 0.085], dir:  1, retro: 0.35, brk: 0.40, sz: [0.40, 1.10], big: 0.06, bigSz: [1.5, 2.2], al: [0.28, 0.55], neu: 0.15, dr:  4, wa:  9, glim: 0.10, front: 0 },
-  { f: 1.00, n: 190, ns: 6, r: [ 34, 125], th: [ 3, 16], ci: [0.35, 0.95], sp: [0.080, 0.160], dir:  1, retro: 0.35, brk: 0.30, sz: [0.35, 1.00], big: 0.07, bigSz: [1.4, 2.2], al: [0.40, 0.85], neu: 0,    dr:  3, wa:  5, glim: 0.12, front: 0 },
-  { f: 1.06, n:  90, ns: 4, r: [ 45, 115], th: [ 2, 10], ci: [0.30, 0.90], sp: [0.070, 0.140], dir: -1, retro: 0.30, brk: 0.50, sz: [0.30, 0.80], big: 0.05, bigSz: [1.2, 1.8], al: [0.35, 0.70], neu: 0,    dr:  3, wa:  6, glim: 0.12, front: 1 },
+  { f: 0.95, n: 110, ns: 5, r: [112, 210], th: [ 3,  9], ci: [0.50, 0.95], sp: [0.045, 0.085], dir:  1, retro: 0.35, brk: 0.40, sz: [0.40, 1.10], big: 0.06, bigSz: [1.5, 2.2], al: [0.28, 0.55], neu: 0.15, dr:  4, wa:  9, glim: 0.10, front: 0 },
+  { f: 1.00, n: 190, ns: 6, r: [106, 170], th: [ 3, 16], ci: [0.55, 0.98], sp: [0.080, 0.160], dir:  1, retro: 0.35, brk: 0.30, sz: [0.35, 1.00], big: 0.07, bigSz: [1.4, 2.2], al: [0.40, 0.85], neu: 0,    dr:  3, wa:  5, glim: 0.12, front: 0 },
+  { f: 1.06, n:  90, ns: 4, r: [108, 160], th: [ 2, 10], ci: [0.55, 0.95], sp: [0.070, 0.140], dir: -1, retro: 0.30, brk: 0.50, sz: [0.30, 0.80], big: 0.05, bigSz: [1.2, 1.8], al: [0.35, 0.70], neu: 0,    dr:  3, wa:  6, glim: 0.12, front: 1 },
   { f: 1.00, n:  32, sat: 1,   r: [ 22,  40], th: [ 1,  3], ci: [0.55, 0.95], sp: [0.280, 0.450], dir:  1, retro: 0.30, brk: 0,    sz: [0.30, 0.70], big: 0.08, bigSz: [1.0, 1.4], al: [0.50, 0.90], neu: 0,    dr:  1, wa:  0, glim: 0.15, front: 0 },
-  { f: 1.14, n:  16, ns: 2, r: [ 90, 300], th: [50, 90], ci: [0.50, 0.90], sp: [0.010, 0.025], dir:  1, retro: 0.30, brk: 0,    sz: [2.00, 4.20], big: 0,    bigSz: [0, 0],     al: [0.08, 0.18], neu: 0.5,  dr: 12, wa: 22, glim: 0.10, front: 1 },
+  { f: 1.14, n:  16, ns: 2, r: [120, 300], th: [50, 90], ci: [0.50, 0.90], sp: [0.010, 0.025], dir:  1, retro: 0.30, brk: 0,    sz: [2.00, 4.20], big: 0,    bigSz: [0, 0],     al: [0.08, 0.18], neu: 0.5,  dr: 12, wa: 22, glim: 0.10, front: 1 },
   { f: 0.74, n:  50, ns: 3, r: [260, 460], th: [30, 70], ci: [0.55, 0.90], sp: [0.008, 0.016], dir:  1, retro: 0.40, brk: 0.6,  sz: [0.30, 0.55], big: 0,    bigSz: [0, 0],     al: [0.08, 0.18], neu: 1.0,  dr: 10, wa: 20, glim: 0.04, front: 0 }
 ];
 var BENV_GAIN = 0.85;
@@ -1093,6 +1093,16 @@ function binaryEnvPrepare(k, pa, pb, rA, rB, now) {
         ci = Math.round((dA / (dA + dB + 1e-6) + p.hj) * 7);
         ci = ci < 0 ? 0 : ci > 7 ? 7 : ci;
         ci += p.neu;
+            }
+
+      if (!s.owner) {
+        // The orbit ring is the epicentre: its interior stays sparse (dim, never empty)
+        const ex = X - k.cx, ey = Y - k.cy;
+        const eu = (ex * 0.94923 - ey * 0.31457) / BIN.ringR;
+        const ev = (ex * 0.31457 + ey * 0.94923) / (BIN.ringR * BIN.cosI);
+        let kk = (Math.sqrt(eu * eu + ev * ev) - 0.9) / 0.2;
+        kk = kk < 0 ? 0 : kk > 1 ? 1 : kk;
+        al *= 0.2 + 0.8 * kk * kk * (3 - 2 * kk);
       }
 
       const front = L.front || (s.owner && z > 0);
@@ -1153,13 +1163,13 @@ function binaryDrawHalo(k, pa, pb, t) {
   ctx.fillStyle = g;
   ctx.beginPath(); ctx.arc(pb.x, pb.y, H * 0.85, 0, Math.PI * 2); ctx.fill();
 
-  // Concentrated central glow (decorative only)
-  g = ctx.createRadialGradient(k.cx, k.cy, 0, k.cx, k.cy, 38);
-  g.addColorStop(0,   `rgba(255,238,215,${0.30 * hp})`);
-  g.addColorStop(0.5, `rgba(200,215,255,${0.10 * hp})`);
+    // Soft glow spread across the whole orbit ring (decorative only)
+  g = ctx.createRadialGradient(k.cx, k.cy, 0, k.cx, k.cy, BIN.ringR * 1.05);
+  g.addColorStop(0,   `rgba(255,238,215,${0.04 * hp})`);
+  g.addColorStop(0.7, `rgba(200,215,255,${0.06 * hp})`);
   g.addColorStop(1,   "rgba(200,215,255,0)");
   ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(k.cx, k.cy, 38, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(k.cx, k.cy, BIN.ringR * 1.05, 0, Math.PI * 2); ctx.fill();
   ctx.globalCompositeOperation = "source-over";
 }
 
