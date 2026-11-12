@@ -519,6 +519,14 @@ let pxSX = [0, 0, 0, 0, 0, 0], pxSY = [0, 0, 0, 0, 0, 0];  // per-layer offset, 
 let pxAX = 0, pxAY = 0;     // translation currently applied this frame (world units)
 let pxTouch = false, pxAmb = 0, pxRect = null;
 const pxLayerCache = new Map();
+// Camera-pan parallax: layer l lags the camera by PX_LAG[l] × (view centre − home), so it travels at
+// (1 − lag) = depth^1.5 of the camera's speed. Memory stars use PX_STAR_PAN of that range (1 = full)
+// so far memories stay reachable. Offsets are in world units and follow the camera directly (no easing).
+const PX_LAG      = PX_DEPTH.map(d => 1 - Math.pow(d, 1.5));
+const PX_STAR_PAN = 0.35;
+let pxDX = 0, pxDY = 0;                                  // view centre − home point
+let pxOX = [0, 0, 0, 0, 0, 0], pxOY = [0, 0, 0, 0, 0, 0];   // scenery + core pan offset per layer
+let pxMX = [0, 0, 0, 0, 0, 0], pxMY = [0, 0, 0, 0, 0, 0];   // memory-star pan offset per layer
 
 function pxInit() {
   try { pxTouch = window.matchMedia("(hover: none)").matches; } catch (e) {}
@@ -542,13 +550,33 @@ function pxLayerOf(star) {
   return l;
 }
 
-// offset (world units) currently applied to a star's drawn position
-function pxWx(star) { return pxSX[pxLayerOf(star)] / cam.zoom; }
-function pxWy(star) { return pxSY[pxLayerOf(star)] / cam.zoom; }
+// total offset (world units: pan + pointer) applied to a star's drawn position
+function pxWx(star) {
+  const l = pxLayerOf(star);
+  return (star.type === "bigbang" || star.type === "confession" ? pxOX[l] : pxMX[l]) + pxSX[l] / cam.zoom;
+}
+function pxWy(star) {
+  const l = pxLayerOf(star);
+  return (star.type === "bigbang" || star.type === "confession" ? pxOY[l] : pxMY[l]) + pxSY[l] / cam.zoom;
+}
 
+// saved-coordinate correction for a NEW star (its layer is fixed by its id) so it lands where pressed
+function pxCreateAdjust(id, pc) {
+  const k = PX_LAG[pxLayerOf({ id: id, type: "memory" })] * PX_STAR_PAN;
+  return { x: k * ((pc && pc.dx) || 0), y: k * ((pc && pc.dy) || 0) };
+}
 // once per frame, right after the camera transform is applied
 function pxBegin(dt) {
   pxAX = 0; pxAY = 0;
+  // camera-pan parallax: view centre relative to the home point (Big Bang) drives every layer's lag
+  const pan = binaryReduceMotion ? 0 : 1;
+  pxDX = cam.x + canvas.width  / 2 - SPECIAL_STARS[0].x;
+  pxDY = cam.y + canvas.height / 2 - SPECIAL_STARS[0].y;
+  for (let i = 0; i < 6; i++) {
+    const lag = PX_LAG[i] * pan;
+    pxOX[i] = lag * pxDX;                 pxOY[i] = lag * pxDY;
+    pxMX[i] = lag * PX_STAR_PAN * pxDX;   pxMY[i] = lag * PX_STAR_PAN * pxDY;
+  }
   let tx = pxTx, ty = pxTy, k = 1;
   if (binaryReduceMotion) {
     tx = 0; ty = 0; pxNx = 0; pxNy = 0;
@@ -568,8 +596,9 @@ function pxBegin(dt) {
 }
 
 // shift the world-space draw origin to a depth layer (composes with the camera)
-function pxSet(l) {
-  const x = pxSX[l] / cam.zoom, y = pxSY[l] / cam.zoom;
+function pxSet(l, st) {   // st = true for memory stars (gentler pan share)
+  const x = (st ? pxMX[l] : pxOX[l]) + pxSX[l] / cam.zoom;
+  const y = (st ? pxMY[l] : pxOY[l]) + pxSY[l] / cam.zoom;
   ctx.translate(x - pxAX, y - pxAY);
   pxAX = x; pxAY = y;
 }
@@ -643,14 +672,17 @@ function renderLoop(ts) {
 // ─────────────────────────────────────────────
 function drawNebula() {
   for (const p of dustPatches) {
-    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
+        // patches are pulled halfway towards the home point so the slow nebula layer always has some in view
+    const nx = SPECIAL_STARS[0].x + (p.x - SPECIAL_STARS[0].x) * 0.5;
+    const ny = SPECIAL_STARS[0].y + (p.y - SPECIAL_STARS[0].y) * 0.5;
+    const g = ctx.createRadialGradient(nx, ny, 0, nx, ny, p.radius);
     g.addColorStop(0,    `rgba(${p.hue},0.30)`);
     g.addColorStop(0.35, `rgba(${p.hue},0.18)`);
     g.addColorStop(0.7,  `rgba(${p.hue},0.08)`);
     g.addColorStop(1,    "rgba(0,0,0,0)");
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.arc(nx, ny, p.radius, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -769,7 +801,7 @@ function drawStar(star, ts) {
   if (star.type === "bigbang" || star.type === "confession") {
     return; // rendered by drawBinarySystem()
   } else {
-        pxSet(pxLayerOf(star));
+            pxSet(pxLayerOf(star), true);
     drawMemoryStar(star, ts);
   }
 }
@@ -1410,8 +1442,13 @@ function drawBinarySystem(ts) {
     const vw = canvas.width / cam.zoom, vh = canvas.height / cam.zoom;
     const left = cam.x + canvas.width / 2 - vw / 2;
     const top  = cam.y + canvas.height / 2 - vh / 2;
-    const m = 520;
-    if (k.cx < left - m || k.cx > left + vw + m || k.cy < top - m || k.cy > top + vh + m) return;
+        const m = 520;
+    let seen = false;   // core layers (halo 3 / body 4 / front 5) sit at different pan offsets
+    for (let l = 3; l <= 5 && !seen; l++) {
+      const cx = k.cx + pxOX[l], cy = k.cy + pxOY[l];
+      seen = !(cx < left - m || cx > left + vw + m || cy < top - m || cy > top + vh + m);
+    }
+    if (!seen) return;
 
     const now = Date.now();
     const t = now / 1000;
@@ -1774,7 +1811,7 @@ function updateAndDrawStarlight(ts) {
     if (pulseElapsed < 1500) {
       const pulseStar = route.find(s => s.id === starlight.pulseStarId);
             if (pulseStar) {
-        pxSet(pxLayerOf(pulseStar));
+                pxSet(pxLayerOf(pulseStar), true);
         const pulseFade = 1 - pulseElapsed / 1500;
         const pulseR = 18 + pulseElapsed * 0.015;
         const pg = ctx.createRadialGradient(pulseStar.x, pulseStar.y, 0, pulseStar.x, pulseStar.y, pulseR);
@@ -2143,7 +2180,7 @@ function onLongPress(wx, wy) {
     return;
   }
 
-  pendingCreatePos = { x: wx, y: wy };
+    pendingCreatePos = { x: wx, y: wy, dx: binaryReduceMotion ? 0 : pxDX, dy: binaryReduceMotion ? 0 : pxDY };
   openCreationModal();
 }
 
@@ -2189,7 +2226,7 @@ function findStarAtWorld(wx, wy) {
 function isOccupied(wx, wy, ignoreId) {
   for (const s of stars) {
     if (ignoreId && s.id === ignoreId) continue;   // a star being retried must not collide with itself
-    if (distWorld(wx, wy, s.x, s.y) < MIN_STAR_RADIUS) return true;
+        if (distWorld(wx, wy, s.x + pxWx(s), s.y + pxWy(s)) < MIN_STAR_RADIUS) return true;
   }
   return false;
 }
@@ -2611,6 +2648,11 @@ async function handleCreateStar() {
     // The star id is fixed BEFORE writing and reused by every retry of this attempt.
     attempt = prior || { id: null, ref: null, sends: 0 };
     if (!attempt.ref) { attempt.ref = fs.doc(collection(db, "stars")); attempt.id = attempt.ref.id; }
+        {   // pan-parallax: save layer-space coords so the star lands exactly where it was pressed
+      const adj = pxCreateAdjust(attempt.id, pendingCreatePos);
+      starDoc.x = Math.round((pos.x - adj.x) * 10) / 10;
+      starDoc.y = Math.round((pos.y - adj.y) * 10) / 10;
+    }
     attempt.payload = starDoc;
     attempt.error   = null;
     attempt.sends++;
