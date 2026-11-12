@@ -311,7 +311,8 @@ function launchUniverse() {
   requestAnimationFrame(renderLoop);
 
   // Attach interaction events
-  attachPointerEvents();
+    attachPointerEvents();
+  pxInit();
   attachModalEvents();
 
   // Subscribe to Firestore once firebase is ready
@@ -334,7 +335,8 @@ function launchUniverse() {
 // ─────────────────────────────────────────────
 function resizeCanvas() {
   canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
+    canvas.height = window.innerHeight;
+  pxRect = null;
 }
 
 // ─────────────────────────────────────────────
@@ -500,6 +502,78 @@ function updateStarCount() {
 // ─────────────────────────────────────────────
 //  RENDER LOOP
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+//  UNIVERSE PARALLAX — render-space only; saved coordinates are never touched.
+//  Layers: 0 static base · 1 nebula · 2–4 bg starfield · 3 core halo ·
+//  4 core binary/ring/particles + Big Bang field · 5 core front particles + dust.
+//  Memory stars take a stable layer 2–5 from a hash of their id (no stored field).
+// ─────────────────────────────────────────────
+const PX_DEPTH   = [0, 0.15, 0.30, 0.50, 0.75, 1.00];
+const PX_MAX     = 22;      // max desktop shift (px)
+const PX_SMOOTH  = 0.05;    // easing per 60fps frame
+const PX_TOUCH_K = 0.45;    // restrained on touch devices
+const PX_GAIN    = PX_DEPTH.map(d => PX_MAX * Math.pow(d, 1.5));
+let pxTx = 0, pxTy = 0;     // target pointer, normalized -1..1 within the canvas
+let pxNx = 0, pxNy = 0;     // smoothed pointer
+let pxSX = [0, 0, 0, 0, 0, 0], pxSY = [0, 0, 0, 0, 0, 0];  // per-layer offset, screen px
+let pxAX = 0, pxAY = 0;     // translation currently applied this frame (world units)
+let pxTouch = false, pxAmb = 0, pxRect = null;
+const pxLayerCache = new Map();
+
+function pxInit() {
+  try { pxTouch = window.matchMedia("(hover: none)").matches; } catch (e) {}
+  canvas.addEventListener("mousemove", function (e) {
+    pxTouch = false;
+    if (!pxRect) pxRect = canvas.getBoundingClientRect();
+    pxTx = Math.max(-1, Math.min(1, ((e.clientX - pxRect.left) / pxRect.width)  * 2 - 1));
+    pxTy = Math.max(-1, Math.min(1, ((e.clientY - pxRect.top)  / pxRect.height) * 2 - 1));
+  }, { passive: true });
+  canvas.addEventListener("mouseleave", function () { pxTx = 0; pxTy = 0; }, { passive: true });
+  canvas.addEventListener("touchstart", function () { pxTouch = true; }, { passive: true });
+}
+
+function pxLayerOf(star) {
+  if (star.type === "bigbang" || star.type === "confession") return 4;
+  let l = pxLayerCache.get(star.id);
+  if (l === undefined) {
+    l = 2 + Math.min(3, Math.floor(hashPhase(String(star.id) + "|px") * 4));
+    pxLayerCache.set(star.id, l);
+  }
+  return l;
+}
+
+// offset (world units) currently applied to a star's drawn position
+function pxWx(star) { return pxSX[pxLayerOf(star)] / cam.zoom; }
+function pxWy(star) { return pxSY[pxLayerOf(star)] / cam.zoom; }
+
+// once per frame, right after the camera transform is applied
+function pxBegin(dt) {
+  pxAX = 0; pxAY = 0;
+  let tx = pxTx, ty = pxTy, k = 1;
+  if (binaryReduceMotion) {
+    tx = 0; ty = 0; pxNx = 0; pxNy = 0;
+  } else if (pxTouch) {
+    if (!(isDragging || isPinching)) pxAmb += dt;           // hold still during gestures
+    tx = Math.sin(pxAmb * 0.0035) * 0.8;
+    ty = Math.cos(pxAmb * 0.0027) * 0.8;
+    k = PX_TOUCH_K;
+  }
+  const e = 1 - Math.pow(1 - PX_SMOOTH, dt);
+  pxNx += (tx - pxNx) * e;
+  pxNy += (ty - pxNy) * e;
+  for (let i = 0; i < 6; i++) {
+    pxSX[i] = -pxNx * PX_GAIN[i] * k;
+    pxSY[i] = -pxNy * PX_GAIN[i] * k;
+  }
+}
+
+// shift the world-space draw origin to a depth layer (composes with the camera)
+function pxSet(l) {
+  const x = pxSX[l] / cam.zoom, y = pxSY[l] / cam.zoom;
+  ctx.translate(x - pxAX, y - pxAY);
+  pxAX = x; pxAY = y;
+}
+
 let lastTime = 0;
 function renderLoop(ts) {
   const dt = Math.min((ts - lastTime) / 16.67, 3);  // cap delta
@@ -525,21 +599,26 @@ function renderLoop(ts) {
   ctx.translate(-cam.x - W / 2, -cam.y - H / 2);
 
   // Draw background nebula haze
+    pxBegin(dt);
+  pxSet(1);
   drawNebula();
 
   // Draw bg stars (twinkle)
   drawBgStars(ts);
 
   // Drift particles
+    pxSet(5);
   updateAndDrawParticles(dt);
 
   // V2: tick startup pulse (fades from 1 → 0 over ~1.2s)
   if (startupPulse > 0) startupPulse = Math.max(0, startupPulse - dt * 0.014);
 
 // V2: draw binary threads beneath stars
+    pxSet(0);
   drawBinaryThreads(ts);
 
   // V3.1: Big Bang particle field (drawn once per frame, not per star)
+    pxSet(4);
   drawBigBangParticles(ts);
 
   // Cosmic core: Big Bang × Confession binary (visual layer only)
@@ -551,6 +630,7 @@ function renderLoop(ts) {
   }
 
   // V3.2: wandering starlight (drawn above stars, last)
+    pxSet(0);
   updateAndDrawStarlight(ts);
 
   ctx.restore();
@@ -580,7 +660,9 @@ function drawNebula() {
 // ─────────────────────────────────────────────
 function drawBgStars(ts) {
   const t = ts * 0.001;
+    let pxL = -1;
   for (const s of bgStars) {
+    if (s.layer !== pxL) { pxL = s.layer; pxSet(pxL + 1); }   // bg layers 1/2/3 → depth layers 2/3/4
     const a = s.alpha * (0.8 + 0.2 * Math.sin(t * s.speed * 6 + s.phase));
 
     // V3: subtle light bleed, Layer 3 (bright/rare) stars only
@@ -662,14 +744,16 @@ function drawBinaryThreads(ts) {
     const shimmer    = 0.03 * Math.sin(t * 1.4 + hashPhase(star.id) * 6.28);
     const alpha      = Math.min(0.55, baseAlpha + shimmer);
 
-    const grad = ctx.createLinearGradient(star.x, star.y, partner.x, partner.y);
+        const ax = star.x + pxWx(star), ay = star.y + pxWy(star);
+    const bx = partner.x + pxWx(partner), by = partner.y + pxWy(partner);
+    const grad = ctx.createLinearGradient(ax, ay, bx, by);
     grad.addColorStop(0,   `rgba(180,195,255,${alpha})`);
     grad.addColorStop(0.5, `rgba(200,210,255,${alpha * 1.3})`);
     grad.addColorStop(1,   `rgba(180,195,255,${alpha})`);
 
     ctx.beginPath();
-    ctx.moveTo(star.x, star.y);
-    ctx.lineTo(partner.x, partner.y);
+        ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
     ctx.strokeStyle = grad;
     ctx.lineWidth   = 0.6;
     ctx.stroke();
@@ -685,6 +769,7 @@ function drawStar(star, ts) {
   if (star.type === "bigbang" || star.type === "confession") {
     return; // rendered by drawBinarySystem()
   } else {
+        pxSet(pxLayerOf(star));
     drawMemoryStar(star, ts);
   }
 }
@@ -1345,7 +1430,9 @@ function drawBinarySystem(ts) {
       envOn = false;
     }
 
+        pxSet(3);
     binaryDrawHalo(k, pa, pb, t);
+    pxSet(4);
     if (envOn) binaryEnvDraw(false);
     binaryDrawRing(k, th);
     binaryDrawParticles(k, now);
@@ -1368,7 +1455,9 @@ function drawBinarySystem(ts) {
       ra = binaryDrawBody(pa, BIN.bb, oa, now, 0);
     }
 
+        pxSet(5);
     if (envOn) binaryEnvDraw(true);
+    pxSet(4);
 
     // Labels
     ctx.textAlign = "center";
@@ -1379,6 +1468,7 @@ function drawBinarySystem(ts) {
     ctx.fillStyle = BIN.cf.label;
     ctx.fillText(BIN.cf.text, pb.x, pb.y + rb + 12);
   } catch (e) {
+    pxSet(4);
     binaryDrawFallback();
   }
 }
@@ -1649,8 +1739,10 @@ function updateAndDrawStarlight(ts) {
     ? 2 * progress * progress
     : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 
-  const x = from.x + (to.x - from.x) * eased;
-  const y = from.y + (to.y - from.y) * eased;
+    const fx = from.x + pxWx(from), fy = from.y + pxWy(from);
+  const tx = to.x + pxWx(to),     ty = to.y + pxWy(to);
+  const x = fx + (tx - fx) * eased;
+  const y = fy + (ty - fy) * eased;
 
   // ── draw the wandering light itself ──
   let opacity = 1;
@@ -1681,7 +1773,8 @@ function updateAndDrawStarlight(ts) {
     const pulseElapsed = ts - starlight.pulseStartTs;
     if (pulseElapsed < 1500) {
       const pulseStar = route.find(s => s.id === starlight.pulseStarId);
-      if (pulseStar) {
+            if (pulseStar) {
+        pxSet(pxLayerOf(pulseStar));
         const pulseFade = 1 - pulseElapsed / 1500;
         const pulseR = 18 + pulseElapsed * 0.015;
         const pg = ctx.createRadialGradient(pulseStar.x, pulseStar.y, 0, pulseStar.x, pulseStar.y, pulseR);
@@ -2086,9 +2179,9 @@ function findStarAtWorld(wx, wy) {
                  s.birthdayNebula === true ? NEBULA_VISUAL_RADIUS / cam.zoom :
                  tapRadiusWorld;
     const isBin = s.type === "bigbang" || s.type === "confession";
-    const hp = isBin ? binaryVisualPos(s) : s;
+        const hp = isBin ? binaryVisualPos(s) : s;
     const hr = isBin && hp.r ? Math.max(hitR, hp.r * 1.2) : hitR;
-    if (distWorld(wx, wy, hp.x, hp.y) < hr) return s;
+    if (distWorld(wx, wy, hp.x + pxWx(s), hp.y + pxWy(s)) < hr) return s;
   }
   return null;
 }
