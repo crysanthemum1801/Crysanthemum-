@@ -643,23 +643,24 @@ function renderLoop(ts) {
   if (startupPulse > 0) startupPulse = Math.max(0, startupPulse - dt * 0.014);
 
 // V2: draw binary threads beneath stars
-    pxSet(0);
+  pxSet(-1);
   drawBinaryThreads(ts);
 
   // V3.1: Big Bang particle field (drawn once per frame, not per star)
-    pxSet(4);
+  pxSet(5);
   drawBigBangParticles(ts);
 
   // Cosmic core: Big Bang × Confession binary (visual layer only)
-  drawBinarySystem(ts);
-
-  // Draw memory stars
-  for (const star of stars) {
-    drawStar(star, ts);
+    // Draw far → near: Layer 3 nebula stars, Layer 2 ordinary stars, then Layer 1 (core + large/celestial)
+  for (let pl = 3; pl <= 5; pl++) {
+    if (pl === 5) drawBinarySystem(ts);
+    for (const star of stars) {
+      if (pxLayerOf(star) === pl) drawStar(star, ts);
+    }
   }
 
   // V3.2: wandering starlight (drawn above stars, last)
-    pxSet(0);
+  pxSet(-1);
   updateAndDrawStarlight(ts);
 
   ctx.restore();
@@ -682,8 +683,23 @@ function drawNebula() {
     g.addColorStop(1,    "rgba(0,0,0,0)");
     ctx.fillStyle = g;
     ctx.beginPath();
-        ctx.arc(nx, ny, p.radius, 0, Math.PI * 2);
+            ctx.arc(nx, ny, p.radius, 0, Math.PI * 2);
     ctx.fill();
+  }
+  for (const gx of pxGalaxies) {
+    ctx.save();
+    ctx.translate(gx.x, gx.y);
+    ctx.rotate(gx.rot);
+    ctx.scale(1, gx.flat);
+    const gg = ctx.createRadialGradient(0, 0, 0, 0, 0, gx.r);
+    gg.addColorStop(0,   "rgba(200,210,255,0.10)");
+    gg.addColorStop(0.3, "rgba(150,160,230,0.05)");
+    gg.addColorStop(1,   "rgba(0,0,0,0)");
+    ctx.fillStyle = gg;
+    ctx.beginPath();
+    ctx.arc(0, 0, gx.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 }
 
@@ -692,10 +708,10 @@ function drawNebula() {
 // ─────────────────────────────────────────────
 function drawBgStars(ts) {
   const t = ts * 0.001;
-    let pxL = -1;
+      let pxL = -1;
   for (const s of bgStars) {
-    if (s.layer !== pxL) { pxL = s.layer; pxSet(pxL + 1); }   // bg layers 1/2/3 → depth layers 2/3/4
-    const a = s.alpha * (0.8 + 0.2 * Math.sin(t * s.speed * 6 + s.phase));
+    if (s.pl !== pxL) { pxL = s.pl; pxSet(pxL); }   // bg star groups: layers 6 / 5 / 4
+    const a = s.alpha * s.dim * (0.8 + 0.2 * Math.sin(t * s.speed * 6 + s.phase));
 
     // V3: subtle light bleed, Layer 3 (bright/rare) stars only
     if (s.layer === 3) {
@@ -801,7 +817,7 @@ function drawStar(star, ts) {
   if (star.type === "bigbang" || star.type === "confession") {
     return; // rendered by drawBinarySystem()
   } else {
-            pxSet(pxLayerOf(star), true);
+                pxSet(pxLayerOf(star));
     drawMemoryStar(star, ts);
   }
 }
@@ -1443,8 +1459,8 @@ function drawBinarySystem(ts) {
     const left = cam.x + canvas.width / 2 - vw / 2;
     const top  = cam.y + canvas.height / 2 - vh / 2;
         const m = 520;
-    let seen = false;   // core layers (halo 3 / body 4 / front 5) sit at different pan offsets
-    for (let l = 3; l <= 5 && !seen; l++) {
+        let seen = false;   // core layers (back particles 4 / body, halo, front 5) sit at different pan offsets
+    for (let l = 4; l <= 5 && !seen; l++) {
       const cx = k.cx + pxOX[l], cy = k.cy + pxOY[l];
       seen = !(cx < left - m || cx > left + vw + m || cy < top - m || cy > top + vh + m);
     }
@@ -1467,10 +1483,11 @@ function drawBinarySystem(ts) {
       envOn = false;
     }
 
-        pxSet(3);
+            pxSet(5);
     binaryDrawHalo(k, pa, pb, t);
     pxSet(4);
     if (envOn) binaryEnvDraw(false);
+    pxSet(5);
     binaryDrawRing(k, th);
     binaryDrawParticles(k, now);
     binaryDrawTrail(BIN.bb, th, k);
@@ -1492,9 +1509,7 @@ function drawBinarySystem(ts) {
       ra = binaryDrawBody(pa, BIN.bb, oa, now, 0);
     }
 
-        pxSet(5);
     if (envOn) binaryEnvDraw(true);
-    pxSet(4);
 
     // Labels
     ctx.textAlign = "center";
@@ -1505,7 +1520,7 @@ function drawBinarySystem(ts) {
     ctx.fillStyle = BIN.cf.label;
     ctx.fillText(BIN.cf.text, pb.x, pb.y + rb + 12);
   } catch (e) {
-    pxSet(4);
+    pxSet(5);
     binaryDrawFallback();
   }
 }
@@ -1811,7 +1826,7 @@ function updateAndDrawStarlight(ts) {
     if (pulseElapsed < 1500) {
       const pulseStar = route.find(s => s.id === starlight.pulseStarId);
             if (pulseStar) {
-                pxSet(pxLayerOf(pulseStar), true);
+                        pxSet(pxLayerOf(pulseStar));
         const pulseFade = 1 - pulseElapsed / 1500;
         const pulseR = 18 + pulseElapsed * 0.015;
         const pg = ctx.createRadialGradient(pulseStar.x, pulseStar.y, 0, pulseStar.x, pulseStar.y, pulseR);
@@ -2207,7 +2222,8 @@ function zoomAtPoint(sx, sy, factor) {
 // ─────────────────────────────────────────────
 function findStarAtWorld(wx, wy) {
   // Use screen-space radius for comfortable tap target
-  const tapRadiusWorld = 18 / cam.zoom;
+    const tapRadiusWorld = 18 / cam.zoom;
+  let best = null, bestL = -1;   // nearest layer wins when stars overlap
 
   for (let i = stars.length - 1; i >= 0; i--) {
     const s = stars[i];
@@ -2218,9 +2234,12 @@ function findStarAtWorld(wx, wy) {
     const isBin = s.type === "bigbang" || s.type === "confession";
         const hp = isBin ? binaryVisualPos(s) : s;
     const hr = isBin && hp.r ? Math.max(hitR, hp.r * 1.2) : hitR;
-    if (distWorld(wx, wy, hp.x + pxWx(s), hp.y + pxWy(s)) < hr) return s;
+        if (distWorld(wx, wy, hp.x + pxWx(s), hp.y + pxWy(s)) < hr) {
+      const pl = pxLayerOf(s);
+      if (pl > bestL) { best = s; bestL = pl; }
+    }
   }
-  return null;
+  return best;
 }
 
 function isOccupied(wx, wy, ignoreId) {
@@ -2649,7 +2668,7 @@ async function handleCreateStar() {
     attempt = prior || { id: null, ref: null, sends: 0 };
     if (!attempt.ref) { attempt.ref = fs.doc(collection(db, "stars")); attempt.id = attempt.ref.id; }
         {   // pan-parallax: save layer-space coords so the star lands exactly where it was pressed
-      const adj = pxCreateAdjust(attempt.id, pendingCreatePos);
+            const adj = pxCreateAdjust(starDoc, pendingCreatePos);
       starDoc.x = Math.round((pos.x - adj.x) * 10) / 10;
       starDoc.y = Math.round((pos.y - adj.y) * 10) / 10;
     }
