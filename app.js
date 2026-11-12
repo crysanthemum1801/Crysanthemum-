@@ -522,7 +522,8 @@ function updateStarCount() {
 const PX_DEPTH = [0, 0.15, 0.30, 0.50, 0.75, 1.00];
 // A layer travels at depth^1.5 of the camera's speed, i.e. it lags the camera by PX_LAG × (view centre − home).
 // Layer 1 has lag 0, so it is exactly the saved-coordinate space; every layer aligns at the home view.
-const PX_LAG = PX_DEPTH.map(d => 1 - Math.pow(d, 1.5));
+const PX_PAN_SCALE = 0.5;   // overall parallax intensity (1 = previous strength)
+const PX_LAG = PX_DEPTH.map(d => PX_PAN_SCALE * (1 - Math.pow(d, 1.5)));
 let pxAX = 0, pxAY = 0;                                    // translation currently applied this frame (world units)
 let pxDX = 0, pxDY = 0;                                    // view centre − home point (world units)
 let pxOX = [0, 0, 0, 0, 0, 0], pxOY = [0, 0, 0, 0, 0, 0]; // per-layer pan offset (world units)
