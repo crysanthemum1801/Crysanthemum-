@@ -311,8 +311,7 @@ function launchUniverse() {
   requestAnimationFrame(renderLoop);
 
   // Attach interaction events
-    attachPointerEvents();
-  pxInit();
+      attachPointerEvents();
   attachModalEvents();
 
   // Subscribe to Firestore once firebase is ready
@@ -335,8 +334,7 @@ function launchUniverse() {
 // ─────────────────────────────────────────────
 function resizeCanvas() {
   canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
-  pxRect = null;
+      canvas.height = window.innerHeight;
 }
 
 // ─────────────────────────────────────────────
@@ -376,7 +374,11 @@ function generateBgStars() {
     layer: 3
   }));
 
-  bgStars = [...layer1, ...layer2, ...layer3];
+    // parallax layers (index): 0 = Layer 6 faint specks · 1 = Layer 5 distant stars · 2 = Layer 4 visible stars
+  const far = layer1.slice(0, 320).map(s => (s.pl = 0, s.dim = 0.45, s));
+  const mid = layer2.filter((s, i) => i % 2 === 0).map(s => (s.pl = 1, s.dim = 0.55, s));
+  const vis = [...layer2.filter((s, i) => i % 2 === 1), ...layer3].map(s => (s.pl = 2, s.dim = 1, s));
+  bgStars = [...far, ...mid, ...vis];
 }
 
 // ─────────────────────────────────────────────
@@ -404,8 +406,17 @@ function generateDustPatches() {
     const tooClose = dustPatches.some(p =>
       Math.hypot(p.x - candidate.x, p.y - candidate.y) < (p.radius + candidate.radius) * 0.55
     );
-    if (!tooClose) dustPatches.push(candidate);
+        if (!tooClose) dustPatches.push(candidate);
   }
+
+  // a few very faint galaxies for the distant layer, scattered sparsely around the home region
+  pxGalaxies = Array.from({ length: 7 }, () => ({
+    x:    SPECIAL_STARS[0].x + (Math.random() - 0.5) * 3200,
+    y:    SPECIAL_STARS[0].y + (Math.random() - 0.5) * 3200,
+    r:    70 + Math.random() * 90,
+    flat: 0.3 + Math.random() * 0.25,
+    rot:  Math.random() * Math.PI
+  }));
 }
 
 // ─── V3.1: seed Big Bang particle field once, around fixed origin ───
@@ -503,105 +514,58 @@ function updateStarCount() {
 //  RENDER LOOP
 // ─────────────────────────────────────────────
 // ─────────────────────────────────────────────
-//  UNIVERSE PARALLAX — render-space only; saved coordinates are never touched.
-//  Layers: 0 static base · 1 nebula · 2–4 bg starfield · 3 core halo ·
-//  4 core binary/ring/particles + Big Bang field · 5 core front particles + dust.
-//  Memory stars take a stable layer 2–5 from a hash of their id (no stored field).
+//  UNIVERSE PARALLAX — camera-pan only (no pointer input); saved coordinates are never touched.
+//  Index 0 = Layer 6 (farthest) … index 5 = Layer 1 (closest):
+//  6 faint specks · 5 distant stars, galaxies, glow patches · 4 visible bg stars ·
+//  3 nebula memory stars · 2 ordinary memory stars · 1 large/celestial stars + Big Bang/Confession core.
 // ─────────────────────────────────────────────
-const PX_DEPTH   = [0, 0.15, 0.30, 0.50, 0.75, 1.00];
-const PX_MAX     = 22;      // max desktop shift (px)
-const PX_SMOOTH  = 0.05;    // easing per 60fps frame
-const PX_TOUCH_K = 0.45;    // restrained on touch devices
-const PX_GAIN    = PX_DEPTH.map(d => PX_MAX * Math.pow(d, 1.5));
-let pxTx = 0, pxTy = 0;     // target pointer, normalized -1..1 within the canvas
-let pxNx = 0, pxNy = 0;     // smoothed pointer
-let pxSX = [0, 0, 0, 0, 0, 0], pxSY = [0, 0, 0, 0, 0, 0];  // per-layer offset, screen px
-let pxAX = 0, pxAY = 0;     // translation currently applied this frame (world units)
-let pxTouch = false, pxAmb = 0, pxRect = null;
-const pxLayerCache = new Map();
-// Camera-pan parallax: layer l lags the camera by PX_LAG[l] × (view centre − home), so it travels at
-// (1 − lag) = depth^1.5 of the camera's speed. Memory stars use PX_STAR_PAN of that range (1 = full)
-// so far memories stay reachable. Offsets are in world units and follow the camera directly (no easing).
-const PX_LAG      = PX_DEPTH.map(d => 1 - Math.pow(d, 1.5));
-const PX_STAR_PAN = 0.35;
-let pxDX = 0, pxDY = 0;                                  // view centre − home point
-let pxOX = [0, 0, 0, 0, 0, 0], pxOY = [0, 0, 0, 0, 0, 0];   // scenery + core pan offset per layer
-let pxMX = [0, 0, 0, 0, 0, 0], pxMY = [0, 0, 0, 0, 0, 0];   // memory-star pan offset per layer
+const PX_DEPTH = [0, 0.15, 0.30, 0.50, 0.75, 1.00];
+// A layer travels at depth^1.5 of the camera's speed, i.e. it lags the camera by PX_LAG × (view centre − home).
+// Layer 1 has lag 0, so it is exactly the saved-coordinate space; every layer aligns at the home view.
+const PX_LAG = PX_DEPTH.map(d => 1 - Math.pow(d, 1.5));
+let pxAX = 0, pxAY = 0;                                    // translation currently applied this frame (world units)
+let pxDX = 0, pxDY = 0;                                    // view centre − home point (world units)
+let pxOX = [0, 0, 0, 0, 0, 0], pxOY = [0, 0, 0, 0, 0, 0]; // per-layer pan offset (world units)
+let pxGalaxies = [];                                       // faint galaxies (layer 5), generated once
 
-function pxInit() {
-  try { pxTouch = window.matchMedia("(hover: none)").matches; } catch (e) {}
-  canvas.addEventListener("mousemove", function (e) {
-    pxTouch = false;
-    if (!pxRect) pxRect = canvas.getBoundingClientRect();
-    pxTx = Math.max(-1, Math.min(1, ((e.clientX - pxRect.left) / pxRect.width)  * 2 - 1));
-    pxTy = Math.max(-1, Math.min(1, ((e.clientY - pxRect.top)  / pxRect.height) * 2 - 1));
-  }, { passive: true });
-  canvas.addEventListener("mouseleave", function () { pxTx = 0; pxTy = 0; }, { passive: true });
-  canvas.addEventListener("touchstart", function () { pxTouch = true; }, { passive: true });
-}
-
+// Layer from the star's own existing fields — no ids, no stored depth.
 function pxLayerOf(star) {
-  if (star.type === "bigbang" || star.type === "confession") return 4;
-  let l = pxLayerCache.get(star.id);
-  if (l === undefined) {
-    l = 2 + Math.min(3, Math.floor(hashPhase(String(star.id) + "|px") * 4));
-    pxLayerCache.set(star.id, l);
-  }
-  return l;
+  if (star.type === "bigbang" || star.type === "confession") return 5;   // Layer 1
+  if (star.birthdayNebula === true) return 3;                            // Layer 3
+  if (star.isCelestial === true || star.size === "big") return 5;        // Layer 1
+  return 4;                                                              // Layer 2
 }
 
-// total offset (world units: pan + pointer) applied to a star's drawn position
-function pxWx(star) {
-  const l = pxLayerOf(star);
-  return (star.type === "bigbang" || star.type === "confession" ? pxOX[l] : pxMX[l]) + pxSX[l] / cam.zoom;
-}
-function pxWy(star) {
-  const l = pxLayerOf(star);
-  return (star.type === "bigbang" || star.type === "confession" ? pxOY[l] : pxMY[l]) + pxSY[l] / cam.zoom;
-}
+// offset (world units) applied to a star's drawn position
+function pxWx(star) { return pxOX[pxLayerOf(star)]; }
+function pxWy(star) { return pxOY[pxLayerOf(star)]; }
 
-// saved-coordinate correction for a NEW star (its layer is fixed by its id) so it lands where pressed
-function pxCreateAdjust(id, pc) {
-  const k = PX_LAG[pxLayerOf({ id: id, type: "memory" })] * PX_STAR_PAN;
+// saved-coordinate correction for a NEW star (starDoc holds its type fields) so it lands where pressed
+function pxCreateAdjust(sd, pc) {
+  const k = PX_LAG[pxLayerOf(sd)];
   return { x: k * ((pc && pc.dx) || 0), y: k * ((pc && pc.dy) || 0) };
 }
+
 // once per frame, right after the camera transform is applied
-function pxBegin(dt) {
+function pxBegin() {
   pxAX = 0; pxAY = 0;
-  // camera-pan parallax: view centre relative to the home point (Big Bang) drives every layer's lag
-  const pan = binaryReduceMotion ? 0 : 1;
+  const pan = binaryReduceMotion ? 0 : 1;   // reduced motion: flat camera, normal navigation
   pxDX = cam.x + canvas.width  / 2 - SPECIAL_STARS[0].x;
   pxDY = cam.y + canvas.height / 2 - SPECIAL_STARS[0].y;
   for (let i = 0; i < 6; i++) {
-    const lag = PX_LAG[i] * pan;
-    pxOX[i] = lag * pxDX;                 pxOY[i] = lag * pxDY;
-    pxMX[i] = lag * PX_STAR_PAN * pxDX;   pxMY[i] = lag * PX_STAR_PAN * pxDY;
-  }
-  let tx = pxTx, ty = pxTy, k = 1;
-  if (binaryReduceMotion) {
-    tx = 0; ty = 0; pxNx = 0; pxNy = 0;
-  } else if (pxTouch) {
-    if (!(isDragging || isPinching)) pxAmb += dt;           // hold still during gestures
-    tx = Math.sin(pxAmb * 0.0035) * 0.8;
-    ty = Math.cos(pxAmb * 0.0027) * 0.8;
-    k = PX_TOUCH_K;
-  }
-  const e = 1 - Math.pow(1 - PX_SMOOTH, dt);
-  pxNx += (tx - pxNx) * e;
-  pxNy += (ty - pxNy) * e;
-  for (let i = 0; i < 6; i++) {
-    pxSX[i] = -pxNx * PX_GAIN[i] * k;
-    pxSY[i] = -pxNy * PX_GAIN[i] * k;
+    pxOX[i] = PX_LAG[i] * pan * pxDX;
+    pxOY[i] = PX_LAG[i] * pan * pxDY;
   }
 }
 
-// shift the world-space draw origin to a depth layer (composes with the camera)
-function pxSet(l, st) {   // st = true for memory stars (gentler pan share)
-  const x = (st ? pxMX[l] : pxOX[l]) + pxSX[l] / cam.zoom;
-  const y = (st ? pxMY[l] : pxOY[l]) + pxSY[l] / cam.zoom;
+// shift the world-space draw origin to a layer (composes with the camera); -1 = no shift
+function pxSet(l) {
+  const x = l < 0 ? 0 : pxOX[l], y = l < 0 ? 0 : pxOY[l];
   ctx.translate(x - pxAX, y - pxAY);
   pxAX = x; pxAY = y;
 }
+
+
 
 let lastTime = 0;
 function renderLoop(ts) {
