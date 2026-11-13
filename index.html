@@ -11,7 +11,8 @@
   <link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <title>Chrysanthemum</title>
-  <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="control-centre.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Inter:wght@300;400&display=swap" rel="stylesheet" />
@@ -176,6 +177,9 @@
     </div>
   </div>
 
+    <!-- ─── CONTROL CENTRE ─── -->
+  <div id="control-centre" aria-hidden="true" style="position:fixed;inset:0;z-index:40;display:none;background:#060a12;"></div>
+
   <!-- ─── OVERLAP TOAST ─── -->
   <div id="overlap-toast" class="toast hidden" role="alert" aria-live="assertive">
     this region of space is already occupied.
@@ -242,6 +246,7 @@
   </script>
 
   <script src="media.js"></script>
+    <script src="control-centre.js"></script>
   <script src="app.js"></script>
 
   <!-- PWA: service worker registration (after app scripts; does not affect Firebase/app init order) -->
