@@ -78,6 +78,8 @@ let isPinching      = false;
 // Touch tap tracking (for star-open on mobile)
 let touchTapStartX  = 0;
 let touchTapStartY  = 0;
+let ccPinched       = false;   // a 2-finger gesture occurred during the current touch sequence
+let controlCentre   = null;
 
 // Canvas & context
 let canvas, ctx;
@@ -1998,14 +2000,16 @@ function onTouchStart(e) {
 
     // Record for tap detection in onTouchEnd
     touchTapStartX = t.clientX;
-    touchTapStartY = t.clientY;
+        touchTapStartY = t.clientY;
+    ccPinched = false;
 
     startLongPress(t.clientX, t.clientY);
   }
 
   if (e.touches.length === 2) {
     cancelLongPress();
-    isPinching = true;
+        isPinching = true;
+    ccPinched = true;
     isDragging = false;
 
     const a = e.touches[0];
@@ -2070,7 +2074,8 @@ function onTouchEnd(e) {
         }
 
         const hit = findStarAtWorld(world.x, world.y);
-        if (hit) openMemoryModal(hit);
+                if (hit) openMemoryModal(hit);
+        else if (!ccPinched && hitControlCentre(world.x, world.y)) openControlCentre();
       }
     } else if (hasDragged) {
       cancelLongPress();
@@ -2117,7 +2122,41 @@ function onCanvasClick(e) {
   }
 
   const hit = findStarAtWorld(world.x, world.y);
-  if (hit) openMemoryModal(hit);
+    if (hit) openMemoryModal(hit);
+  else if (hitControlCentre(world.x, world.y)) openControlCentre();
+}
+
+// ─── Control Centre: invisible activation at the shared centre of Big Bang × Confession ───
+function hitControlCentre(wx, wy) {
+  try {
+    const k  = binaryCentre();
+    const a  = binaryVisualPos(k.b);
+    const b  = binaryVisualPos(k.c);
+    const ox = pxOX[5], oy = pxOY[5];            // same layer offset the binary is drawn with
+    const mx = k.cx + ox, my = k.cy + oy;        // animated shared centre (orbit centre)
+    const hrA = Math.max(22 / cam.zoom, a.r ? a.r * 1.2 : 0);   // same radii as findStarAtWorld()
+    const hrB = Math.max(16 / cam.zoom, b.r ? b.r * 1.2 : 0);
+    const r = Math.min(
+      30 / cam.zoom,
+      Math.hypot(mx - (a.x + ox), my - (a.y + oy)) - hrA,
+      Math.hypot(mx - (b.x + ox), my - (b.y + oy)) - hrB
+    );
+    return r > 0 && distWorld(wx, wy, mx, my) < r;
+  } catch (e) {
+    return false;
+  }
+}
+
+function openControlCentre() {
+  const el = document.getElementById("control-centre");
+  if (!el || !window.ChrysanthemumControlCentre) return;
+  cancelLongPress();
+  isDragging = false;
+  isPinching = false;
+  el.style.display = "block";
+  el.setAttribute("aria-hidden", "false");
+  if (!controlCentre) controlCentre = ChrysanthemumControlCentre.mount(el);
+  else controlCentre.resize();
 }
 
 // ─── Long press ───
