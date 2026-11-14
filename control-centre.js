@@ -765,6 +765,7 @@
 
     // ── Full (re)build for a given size
     function rebuild() {
+      rectCache = null;
       var W = container.clientWidth, H = container.clientHeight;
       if (W < 40 || H < 40) return;
       var L = computeLayout(W, H);
@@ -935,7 +936,7 @@
       c.globalAlpha = 1;
     }
     function loop(now) {
-      if (state.destroyed) return;
+      if (state.destroyed || state.dragging) return;
       state.raf = global.requestAnimationFrame(loop);
       var dt = Math.min((now - state.last) / 1000, 0.1);
       if (dt * 1000 < (lowPower ? 40 : 28)) return;
@@ -945,19 +946,20 @@
     }
     function start() {
       cancelAnimationFrame(state.raf);
+      if (state.dragging) return;
       if (state.reduced || document.hidden) { render(state.time); return; }
       state.last = performance.now();
       state.raf = global.requestAnimationFrame(loop);
     }
     function onVis() {
-      if (document.hidden) cancelAnimationFrame(state.raf); else start();
+      if (document.hidden) { if (drag) endDrag(); cancelAnimationFrame(state.raf); } else start();
     }
     document.addEventListener("visibilitychange", onVis);
 
     // ── Drag along an orbit: the path is fixed, only the attached stars slide
-    var drag = null;
+    var drag = null, rectCache = null;
     function localXY(e) {
-      var b = root.getBoundingClientRect();
+      var b = rectCache || root.getBoundingClientRect();
       return { x: e.clientX - b.left, y: e.clientY - b.top };
     }
     function nearest(name, x, y, around, span) {
@@ -979,8 +981,10 @@
     }
     function onDown(e) {
       if (!state.L || (e.pointerType === "mouse" && e.button !== 0)) return;
+      rectCache = null;
       var p = localXY(e), pick = pickOrbit(p);
       if (!pick) return;
+      rectCache = root.getBoundingClientRect();
       drag = { id: e.pointerId, name: pick.name, x0: p.x, y0: p.y, last: pick.th, acc: 0, off0: state.off[pick.name], moved: false };
     }
     function onMove(e) {
@@ -993,31 +997,55 @@
       if (!drag.moved) {
         if (Math.hypot(p.x - drag.x0, p.y - drag.y0) < 9) return;
         drag.moved = true;
+        state.dragging = true;               // a real drag has begun: pause the ambient canvas
+        cancelAnimationFrame(state.raf);
         try { root.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
         root.classList.add("cc-dragging");
       }
-      var h = nearest(drag.name, p.x, p.y, drag.last, rad(70));
+      drag.px = p.x; drag.py = p.y; drag.dirty = true;   // keep only the latest position
+      if (!drag.raf) drag.raf = global.requestAnimationFrame(applyDrag);
+      e.preventDefault();
+    }
+    function applyDrag() {
+      if (!drag) return;
+      drag.raf = 0;
+      if (!drag.dirty) return;
+      drag.dirty = false;
+      var h = nearest(drag.name, drag.px, drag.py, drag.last, rad(70));
       if (!h) return;
       drag.acc += angDiff(h.th, drag.last);
       drag.last = h.th;
       state.off[drag.name] = drag.off0 + drag.acc;
       placeStars();
-      e.preventDefault();
     }
-    function onUp(e) {
-      if (!drag || e.pointerId !== drag.id) return;
-      if (drag.moved) {
+    function endDrag() {
+      if (!drag) return;
+      if (drag.raf) { cancelAnimationFrame(drag.raf); drag.raf = 0; }
+      var d = drag;
+      if (d.moved) {
+        applyDrag();                          // commit the latest pointer position
         state.suppress = true;
         setTimeout(function () { state.suppress = false; }, 0);
-        try { root.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        try { root.releasePointerCapture(d.id); } catch (err) { /* ignore */ }
         root.classList.remove("cc-dragging");
       }
       drag = null;
+      rectCache = null;
+      if (d.moved) { state.dragging = false; start(); }   // resume the ambient canvas (start() cancels any prior loop)
+    }
+    function onUp(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      endDrag();
+    }
+    function onLost(e) {
+      if (drag && drag.moved && e.pointerId === drag.id) endDrag();
     }
     root.addEventListener("pointerdown", onDown);
     root.addEventListener("pointermove", onMove);
     root.addEventListener("pointerup", onUp);
     root.addEventListener("pointercancel", onUp);
+    root.addEventListener("lostpointercapture", onLost);
+    root.addEventListener("touchcancel", endDrag, { passive: true });
     feature.addEventListener("click", function (e) {
       if (state.suppress) { e.stopImmediatePropagation(); e.preventDefault(); }
     }, true);
@@ -1071,6 +1099,9 @@
         root.removeEventListener("pointermove", onMove);
         root.removeEventListener("pointerup", onUp);
         root.removeEventListener("pointercancel", onUp);
+        root.removeEventListener("lostpointercapture", onLost);
+        root.removeEventListener("touchcancel", endDrag);
+        if (drag && drag.raf) cancelAnimationFrame(drag.raf);
         cancelAnimationFrame(state.raf);
         clearTimeout(state.resizeTimer);
         if (ro) ro.disconnect(); else global.removeEventListener("resize", scheduleRebuild);
