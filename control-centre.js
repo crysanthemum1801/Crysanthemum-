@@ -604,6 +604,7 @@
     root.setAttribute("aria-label", "Control Centre");
     root.innerHTML =
       '<canvas class="cc-layer cc-bg" aria-hidden="true"></canvas>' +
+            '<canvas class="cc-layer cc-anim" aria-hidden="true"></canvas>' +
       '<canvas class="cc-layer cc-dust-far" aria-hidden="true"></canvas>' +
       '<svg class="cc-layer cc-svg-far" aria-hidden="true" focusable="false"></svg>' +
       '<svg class="cc-layer cc-stars-far" aria-hidden="true" focusable="false"></svg>' +
@@ -625,7 +626,8 @@
 
     var q = function (s) { return root.querySelector(s); };
     var bgCanvas = q(".cc-bg"), farCanvas = q(".cc-dust-far"), nearCanvas = q(".cc-dust-near");
-    var svgFar = q(".cc-svg-far"), svgNear = q(".cc-svg-near");
+        var svgFar = q(".cc-svg-far"), svgNear = q(".cc-svg-near");
+    var animCanvas = q(".cc-anim"), animCtx = animCanvas.getContext("2d");
     var starsFar = q(".cc-stars-far"), starsNear = q(".cc-stars-near");
     var starEl = q(".cc-star"), surface = q(".cc-star__surface"), rays = q(".cc-star__rays");
     var label = q(".cc-label"), feature = q(".cc-feature");
@@ -643,9 +645,15 @@
 
     var state = {
       L: null, orbits: null, dust: null, stars: [], ambient: [], twinkles: [],
-      dynDpr: 1, surfaceSize: 0, labelW: 0, labelH: 0,
+            dynDpr: 1, animDpr: 1, surfaceSize: 0, labelW: 0, labelH: 0, off: { upper: 0, lower: 0 }, path: null,
+      perf: 1, time: 0, last: 0, suppress: false,
       reduced: false, raf: 0, t0: 0, destroyed: false, resizeTimer: 0, lastKey: ""
     };
+
+        // Device capability: tablets / low-core / low-memory devices get fewer particles and a lower DPR cap
+    var nav = global.navigator || {};
+    var lowPower = !!(global.matchMedia && global.matchMedia("(pointer: coarse)").matches) ||
+      (nav.hardwareConcurrency || 8) <= 4 || (nav.deviceMemory || 8) <= 4;
 
     var mq = global.matchMedia ? global.matchMedia("(prefers-reduced-motion: reduce)") : null;
     state.reduced = !!(mq && mq.matches);
@@ -654,7 +662,7 @@
     // ── Dust: clustered along selected stretches of each orbit
     function makeDust(L) {
       var rand = rng(4242);
-      var per = clamp(Math.round(L.W * L.H / 4800), 150, 340);
+            var per = clamp(Math.round(L.W * L.H / 3600 * L.perf), 160, 480);
       var out = { upper: [], lower: [] };
       ["upper", "lower"].forEach(function (name, oi) {
         var centres = [];
@@ -692,7 +700,7 @@
 
     function makeAmbient(L) {
       var rand = rng(777);
-      var n = clamp(Math.round(L.W * L.H / 24000), 30, 80);
+            var n = clamp(Math.round(L.W * L.H / 24000 * L.perf), 20, 80);
       var list = [];
       for (var i = 0; i < n; i++) {
         list.push({
@@ -721,8 +729,13 @@
       if (W < 40 || H < 40) return;
       var L = computeLayout(W, H);
       state.L = L;
-      var dpr = Math.min(global.devicePixelRatio || 1, 2);
-      state.dynDpr = Math.min(global.devicePixelRatio || 1, 1.5);
+            state.perf = lowPower ? 0.65 : 1;
+      L.perf = state.perf;
+      var dpr = Math.min(global.devicePixelRatio || 1, lowPower ? 1.5 : 2);
+            state.dynDpr = dpr;
+      state.animDpr = Math.min(global.devicePixelRatio || 1, lowPower ? 1 : 1.5);
+      animCanvas.width = Math.round(W * state.animDpr);
+      animCanvas.height = Math.round(H * state.animDpr);
 
       root.style.setProperty("--cc-d", (L.r * 2).toFixed(1) + "px");
 
@@ -734,9 +747,16 @@
       });
 
       // Orbits
-      state.orbits = { upper: makeOrbit(L.upper), lower: makeOrbit(L.lower) };
-      var mu = buildOrbitMarkup(state.orbits.upper, ORBIT_STYLE.upper, L.u);
-      var ml = buildOrbitMarkup(state.orbits.lower, ORBIT_STYLE.lower, L.u);
+            state.orbits = { upper: makeOrbit(L.upper), lower: makeOrbit(L.lower) };
+      // Fixed path samples used to map a drag position onto an orbit
+      state.path = {};
+      ["upper", "lower"].forEach(function (name) {
+        var P = [];
+        for (var pi = 0; pi < 360; pi++) { var pth = pi / 360 * TAU, pp = state.orbits[name].point(pth); P.push({ x: pp.x, y: pp.y, th: pth }); }
+        state.path[name] = P;
+      });
+            var mu = buildOrbitMarkup(state.orbits.upper, ORBIT_STYLE.upper, L.u, L);
+            var ml = buildOrbitMarkup(state.orbits.lower, ORBIT_STYLE.lower, L.u, L);
 
       function layerMarkup(half, glowKey, idp) {
         var s = '<g fill="none" stroke-linecap="butt">';
@@ -767,9 +787,9 @@
 
       // Central star
       starEl.style.transform = "translate(" + L.cx.toFixed(1) + "px," + L.cy.toFixed(1) + "px)";
-      var surfPx = Math.round(L.r * 2 * 2.6 * Math.min(global.devicePixelRatio || 1, 2));
+            var surfPx = Math.round(L.r * 2 * 2.6 * dpr);
       if (Math.abs(surfPx - state.surfaceSize) > 24 || !state.surfaceSize) {
-        paintStarSurface(surface, surfPx, noise);
+                paintStarSurface(surface, surfPx, noise, state.perf);
         state.surfaceSize = surfPx;
       }
 
@@ -785,7 +805,9 @@
 
       state.labelW = label.offsetWidth;
       state.labelH = label.offsetHeight;
-      render(state.reduced ? 0 : (performance.now() - state.t0) / 1000);
+            drawStatic();
+      placeStars();
+      render(state.time);
     }
 
     // ── Per-frame drawing
@@ -794,74 +816,52 @@
       ctx.drawImage(sprites[name], x - size, y - size, size * 2, size * 2);
     }
 
-    function render(t) {
-      var L = state.L;
-      if (!L) return;
-      var W = L.W, H = L.H, dpr = state.dynDpr;
-
-      farCtx.setTransform(1, 0, 0, 1, 0, 0);
-      farCtx.clearRect(0, 0, farCanvas.width, farCanvas.height);
-      nearCtx.setTransform(1, 0, 0, 1, 0, 0);
-      nearCtx.clearRect(0, 0, nearCanvas.width, nearCanvas.height);
-      farCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      nearCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      farCtx.globalCompositeOperation = "lighter";
-      nearCtx.globalCompositeOperation = "lighter";
-
-      var i, p, tw;
-      // Ambient drifting motes
-      for (i = 0; i < state.ambient.length; i++) {
-        p = state.ambient[i];
-        drawSprite(farCtx, p.col,
-          p.x + Math.sin(t * p.fx + p.px) * p.ax, p.y + Math.cos(t * p.fy + p.py) * p.ay,
-          p.size * 2.4 * L.u + 1, p.a);
-      }
-      // Gently twinkling stars
-      for (i = 0; i < state.twinkles.length; i++) {
-        p = state.twinkles[i];
-        tw = 0.55 + 0.45 * Math.sin(t * p.f + p.ph);
-        drawSprite(farCtx, p.col, p.x, p.y, p.size * 3.2, 0.14 + 0.5 * tw);
-      }
-
-      // Orbital stardust (belongs to the far or near canvas by depth)
+        // Static stardust: painted once per build, never redrawn per frame
+    function drawStatic() {
+      var L = state.L, dpr = state.dynDpr;
+      [farCtx, nearCtx].forEach(function (c) {
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.clearRect(0, 0, c.canvas.width, c.canvas.height);
+        c.setTransform(dpr, 0, 0, dpr, 0, 0);
+        c.globalCompositeOperation = "lighter";
+      });
       ["upper", "lower"].forEach(function (name) {
-        var orbit = state.orbits[name], m = ORBIT_MOTION[name];
-        var omega = m.dir * TAU / m.period * t;
-        var list = state.dust[name];
+        var orbit = state.orbits[name], list = state.dust[name];
         for (var k = 0; k < list.length; k++) {
           var d = list[k];
-          var pt = orbit.point(d.th + omega * d.sp, d.rs, d.lift * L.u);
+          var pt = orbit.point(d.th, d.rs, d.lift * L.u);
           var n = 1 - pt.d;
-          var tws = 0.78 + 0.22 * Math.sin(t * 0.7 + d.ph);
-          var a = d.a * (0.28 + 0.85 * n) * tws;
+          var nb = smooth(1.5, 0.75, Math.hypot(pt.x - L.cx, pt.y - L.cy) / L.r);
+          var a = d.a * (0.28 + 0.85 * n) * (pt.z > 0 ? 0.7 : 1) * (1 - 0.55 * nb);
           var sz = (d.size * L.u * pt.s * (0.5 + 0.8 * n) * 1.9) + 0.5;
           drawSprite(pt.z > 0 ? farCtx : nearCtx, d.col, pt.x, pt.y, sz, a > 1 ? 1 : a);
         }
       });
       farCtx.globalAlpha = 1;
       nearCtx.globalAlpha = 1;
+    }
 
-      // Stars on the orbits
-      var featurePos = null;
+    // Stars sit at (fixed angle + their orbit's drag offset); depth layer follows position
+    function placeStars() {
+      var L = state.L;
+      if (!L) return;
+      var W = L.W, H = L.H, i, featurePos = null;
       for (i = 0; i < state.stars.length; i++) {
-        var s = state.stars[i], def = s.def, m2 = ORBIT_MOTION[def.orbit];
-        var th = def.theta + m2.dir * TAU / m2.period * t;
-        var pos = state.orbits[def.orbit].point(th, 1, (def.lift || 0) * L.u);
+        var s = state.stars[i], def = s.def;
+        var pos = state.orbits[def.orbit].point(def.theta + state.off[def.orbit], 1, (def.lift || 0) * L.u);
         var nn = 1 - pos.d;
         var sc = def.size * L.u * pos.s * (0.6 + 0.55 * nn) * (def.feature ? 1.15 : 1);
-        var twk = state.reduced ? 1 : 0.92 + 0.08 * Math.sin(t * 0.9 + s.ph * 3);
         var layer = pos.z > 0 ? "far" : "near";
         if (s.layer !== layer) {
           s.g.innerHTML = s.mk[layer];
           (layer === "far" ? starsFar : starsNear).appendChild(s.g);
           s.layer = layer;
         }
+        var hide = layer === "far" ? 1 - 0.6 * smooth(1.3, 0.6, Math.hypot(pos.x - L.cx, pos.y - L.cy) / L.r) : 1;
         s.g.setAttribute("transform", "translate(" + pos.x.toFixed(1) + " " + pos.y.toFixed(1) + ") scale(" + sc.toFixed(3) + ")");
-        s.g.setAttribute("opacity", (clamp(0.42 + 0.58 * Math.pow(nn, 0.8), 0, 1) * twk).toFixed(3));
+        s.g.setAttribute("opacity", (clamp(0.42 + 0.58 * Math.pow(nn, 0.8), 0, 1) * hide).toFixed(3));
         if (def.feature) featurePos = { x: pos.x, y: pos.y, sc: sc, n: nn };
       }
-
-      // Label and hit target follow the feature star
       if (featurePos) {
         feature.style.transform = "translate(" + featurePos.x.toFixed(1) + "px," + featurePos.y.toFixed(1) + "px)";
         var lw = state.labelW, lh = state.labelH, pad = 14;
@@ -872,19 +872,119 @@
       }
     }
 
+    // Animated particles only: drifting motes and twinkles on one shared canvas
+    function render(t) {
+      var L = state.L;
+      if (!L) return;
+      var dpr = state.animDpr, c = animCtx, i, p, tw;
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, animCanvas.width, animCanvas.height);
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      c.globalCompositeOperation = "lighter";
+      for (i = 0; i < state.ambient.length; i++) {
+        p = state.ambient[i];
+        drawSprite(c, p.col,
+          p.x + Math.sin(t * p.fx + p.px) * p.ax, p.y + Math.cos(t * p.fy + p.py) * p.ay,
+          p.size * 2.4 * L.u + 1, p.a);
+      }
+      for (i = 0; i < state.twinkles.length; i++) {
+        p = state.twinkles[i];
+        tw = 0.55 + 0.45 * Math.sin(t * p.f + p.ph);
+        drawSprite(c, p.col, p.x, p.y, p.size * 3.2, 0.14 + 0.5 * tw);
+      }
+      c.globalAlpha = 1;
+    }
     function loop(now) {
       if (state.destroyed) return;
-      render((now - state.t0) / 1000);
       state.raf = global.requestAnimationFrame(loop);
+      var dt = Math.min((now - state.last) / 1000, 0.1);
+      if (dt * 1000 < (lowPower ? 40 : 28)) return;
+      state.last = now;
+      state.time += dt;
+      render(state.time);
     }
     function start() {
       cancelAnimationFrame(state.raf);
-      state.t0 = performance.now();
-      if (state.reduced) { render(0); return; }
+      if (state.reduced || document.hidden) { render(state.time); return; }
+      state.last = performance.now();
       state.raf = global.requestAnimationFrame(loop);
     }
+    function onVis() {
+      if (document.hidden) cancelAnimationFrame(state.raf); else start();
+    }
+    document.addEventListener("visibilitychange", onVis);
+
+    // ── Drag along an orbit: the path is fixed, only the attached stars slide
+    var drag = null;
+    function localXY(e) {
+      var b = root.getBoundingClientRect();
+      return { x: e.clientX - b.left, y: e.clientY - b.top };
+    }
+    function nearest(name, x, y, around, span) {
+      var P = state.path[name], best = -1, bd = 1e12;
+      for (var i = 0; i < P.length; i++) {
+        if (around !== undefined && Math.abs(angDiff(P[i].th, around)) > span) continue;
+        var dx = P[i].x - x, dy = P[i].y - y, dd = dx * dx + dy * dy;
+        if (dd < bd) { bd = dd; best = i; }
+      }
+      return best < 0 ? null : { th: P[best].th, d: Math.sqrt(bd) };
+    }
+    function pickOrbit(p) {
+      var tol = Math.max(22, 30 * state.L.u), pick = null;
+      ["upper", "lower"].forEach(function (name) {
+        var h = nearest(name, p.x, p.y);
+        if (h && h.d < tol && (!pick || h.d < pick.d)) pick = { name: name, th: h.th, d: h.d };
+      });
+      return pick;
+    }
+    function onDown(e) {
+      if (!state.L || (e.pointerType === "mouse" && e.button !== 0)) return;
+      var p = localXY(e), pick = pickOrbit(p);
+      if (!pick) return;
+      drag = { id: e.pointerId, name: pick.name, x0: p.x, y0: p.y, last: pick.th, acc: 0, off0: state.off[pick.name], moved: false };
+    }
+    function onMove(e) {
+      var p = localXY(e);
+      if (!drag) {
+        if (e.pointerType === "mouse" && state.L) root.style.cursor = pickOrbit(p) ? "grab" : "";
+        return;
+      }
+      if (e.pointerId !== drag.id) return;
+      if (!drag.moved) {
+        if (Math.hypot(p.x - drag.x0, p.y - drag.y0) < 9) return;
+        drag.moved = true;
+        try { root.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        root.classList.add("cc-dragging");
+      }
+      var h = nearest(drag.name, p.x, p.y, drag.last, rad(70));
+      if (!h) return;
+      drag.acc += angDiff(h.th, drag.last);
+      drag.last = h.th;
+      state.off[drag.name] = drag.off0 + drag.acc;
+      placeStars();
+      e.preventDefault();
+    }
+    function onUp(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (drag.moved) {
+        state.suppress = true;
+        setTimeout(function () { state.suppress = false; }, 0);
+        try { root.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        root.classList.remove("cc-dragging");
+      }
+      drag = null;
+    }
+    root.addEventListener("pointerdown", onDown);
+    root.addEventListener("pointermove", onMove);
+    root.addEventListener("pointerup", onUp);
+    root.addEventListener("pointercancel", onUp);
+    feature.addEventListener("click", function (e) {
+      if (state.suppress) { e.stopImmediatePropagation(); e.preventDefault(); }
+    }, true);
 
     // ── Events
+      
+          
     function onMotionChange() {
       state.reduced = !!(mq && mq.matches);
       root.classList.toggle("cc-reduced", state.reduced);
@@ -927,7 +1027,12 @@
       featureButton: feature,
       resize: rebuild,
       destroy: function () {
-        state.destroyed = true;
+                state.destroyed = true;
+        document.removeEventListener("visibilitychange", onVis);
+        root.removeEventListener("pointerdown", onDown);
+        root.removeEventListener("pointermove", onMove);
+        root.removeEventListener("pointerup", onUp);
+        root.removeEventListener("pointercancel", onUp);
         cancelAnimationFrame(state.raf);
         clearTimeout(state.resizeTimer);
         if (ro) ro.disconnect(); else global.removeEventListener("resize", scheduleRebuild);
