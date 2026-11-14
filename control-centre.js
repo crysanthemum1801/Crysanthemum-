@@ -647,7 +647,7 @@
       '<canvas class="cc-layer cc-anim" aria-hidden="true"></canvas>' +
       '<canvas class="cc-layer cc-dust-far" aria-hidden="true"></canvas>' +
       '<svg class="cc-layer cc-svg-far" aria-hidden="true" focusable="false"></svg>' +
-      '<svg class="cc-layer cc-stars-far" aria-hidden="true" focusable="false"></svg>' +
+            '<div class="cc-layer cc-stars-far" aria-hidden="true"></div>' +
       '<div class="cc-star" aria-hidden="true">' +
         '<div class="cc-star__halo"></div>' +
         '<div class="cc-star__corona cc-star__corona--cool"></div>' +
@@ -656,7 +656,7 @@
         '<svg class="cc-star__rays" viewBox="-300 -300 600 600" focusable="false"></svg>' +
       '</div>' +
       '<svg class="cc-layer cc-svg-near" aria-hidden="true" focusable="false"></svg>' +
-      '<svg class="cc-layer cc-stars-near" aria-hidden="true" focusable="false"></svg>' +
+            '<div class="cc-layer cc-stars-near" aria-hidden="true"></div>' +
       '<canvas class="cc-layer cc-dust-near" aria-hidden="true"></canvas>' +
       '<div class="cc-ui">' +
         '<span class="cc-label">Constellations</span>' +
@@ -763,6 +763,23 @@
       return { ambient: list, twinkles: tw };
     }
 
+        // ── Per-orbit lookup table: projection, scale and opacity computed once per build, never while dragging
+    var LUT_N = 720;
+    function buildLut(orbit, L) {
+      var T = { x: new Float64Array(LUT_N), y: new Float64Array(LUT_N), z: new Float64Array(LUT_N), k: new Float64Array(LUT_N),
+        n: new Float64Array(LUT_N), on: new Float64Array(LUT_N), of: new Float64Array(LUT_N), bg: new Uint8Array(LUT_N) };
+      for (var i = 0; i < LUT_N; i++) {
+        var p = orbit.point(i / LUT_N * TAU, 1, 0), nn = 1 - p.d;
+        var op = clamp(0.42 + 0.58 * Math.pow(nn, 0.8), 0, 1);
+        T.x[i] = p.x; T.y[i] = p.y; T.z[i] = p.z; T.n[i] = nn;
+        T.k[i] = L.u * p.s * (0.6 + 0.55 * nn);
+        T.on[i] = op;
+        T.of[i] = op * (1 - 0.6 * smooth(1.3, 0.6, Math.hypot(p.x - L.cx, p.y - L.cy) / L.r));
+        T.bg[i] = p.z > 0 ? 1 : 0;
+      }
+      return T;
+    }
+
     // ── Full (re)build for a given size
     function rebuild() {
       rectCache = null;
@@ -808,24 +825,32 @@
         }
         return s + "</g>";
       }
-      [svgFar, svgNear, starsFar, starsNear].forEach(function (sv) {
+            [svgFar, svgNear].forEach(function (sv) {
         sv.setAttribute("viewBox", "0 0 " + W + " " + H);
         sv.setAttribute("preserveAspectRatio", "none");
       });
       svgFar.innerHTML = defsMarkup(uid + "f", W, H, L.u) + layerMarkup("far", "glowFar", uid + "f");
       svgNear.innerHTML = defsMarkup(uid + "n", W, H, L.u) + layerMarkup("near", "glowNear", uid + "n");
 
-      // Stars (one <g> each, moved between the far and near layers as they travel)
-      starsFar.innerHTML = defsMarkup(uid + "sf", W, H, L.u);
-      starsNear.innerHTML = defsMarkup(uid + "sn", W, H, L.u);
-      state.stars = STARS.map(function (def) {
-        var g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        g.innerHTML = starMarkup(uid + "sf", def.tint, !!def.feature);
-        return { def: def, g: g, layer: null, ph: rad(def.theta * 57.3) + def.size * 9 };
+            // Stars: one pre-rendered element each, moved by CSS transform between two stationary containers
+      starsFar.textContent = "";
+      starsNear.textContent = "";
+      state.lut = { upper: buildLut(state.orbits.upper, L), lower: buildLut(state.orbits.lower, L) };
+      state.byOrbit = { upper: [], lower: [] };
+      state.stars = STARS.map(function (def, si) {
+        var T = state.lut[def.orbit], mk = 0, k;
+        for (k = 0; k < LUT_N; k++) if (T.k[k] > mk) mk = T.k[k];
+        var ref = def.size * (def.feature ? 1.15 : 1) * mk;       // largest on-screen scale: raster once at this size, only ever scale down
+        var half = def.feature ? 68 : 44, px = 2 * half * ref, id = uid + "p" + si;
+        var el = document.createElement("div");
+        el.className = "cc-pstar";
+        el.style.cssText = "width:" + px.toFixed(2) + "px;height:" + px.toFixed(2) + "px;margin:" +
+          (-px / 2).toFixed(2) + "px 0 0 " + (-px / 2).toFixed(2) + "px";
+        el.innerHTML = '<svg viewBox="' + (-half) + " " + (-half) + " " + (2 * half) + " " + (2 * half) + '" focusable="false">' +
+          defsMarkup(id, W, H, L.u) + starMarkup(id, def.tint, !!def.feature) + "</svg>";
+        return { def: def, el: el, ref: ref, bg: -1, tf: "", op: "" };
       });
-      // Gradients are defined once per star SVG: rebuild markup per layer so ids resolve
-      state.stars.forEach(function (s) { s.mk = { far: starMarkup(uid + "sf", s.def.tint, !!s.def.feature), near: starMarkup(uid + "sn", s.def.tint, !!s.def.feature) }; });
-
+      state.stars.forEach(function (s) { state.byOrbit[s.def.orbit].push(s); });
       // Central star
       starEl.style.transform = "translate(" + L.cx.toFixed(1) + "px," + L.cy.toFixed(1) + "px)";
       var surfPx = Math.round(L.r * 2 * 2.6 * dpr);
@@ -882,37 +907,41 @@
       nearCtx.globalAlpha = 1;
     }
 
-    // Stars sit at (fixed angle + their orbit's drag offset); depth layer follows position
-    function placeStars() {
+        // Stars sit at (fixed angle + their orbit's drag offset); depth container follows the stored depth
+    function placeStars() { placeOrbit("upper"); placeOrbit("lower"); }
+    function placeOrbit(name) {
       var L = state.L;
-      if (!L) return;
-      var W = L.W, H = L.H, i, featurePos = null;
-      for (i = 0; i < state.stars.length; i++) {
-        var s = state.stars[i], def = s.def;
-        var pos = state.orbits[def.orbit].point(def.theta + state.off[def.orbit], 1, (def.lift || 0) * L.u);
-        var nn = 1 - pos.d;
-        var sc = def.size * L.u * pos.s * (0.6 + 0.55 * nn) * (def.feature ? 1.15 : 1);
-        var layer = pos.z > 0 ? "far" : "near";
-        if (s.layer !== layer) {
-          s.g.innerHTML = s.mk[layer];
-          (layer === "far" ? starsFar : starsNear).appendChild(s.g);
-          s.layer = layer;
-        }
-        var hide = layer === "far" ? 1 - 0.6 * smooth(1.3, 0.6, Math.hypot(pos.x - L.cx, pos.y - L.cy) / L.r) : 1;
-        s.g.setAttribute("transform", "translate(" + pos.x.toFixed(1) + " " + pos.y.toFixed(1) + ") scale(" + sc.toFixed(3) + ")");
-        s.g.setAttribute("opacity", (clamp(0.42 + 0.58 * Math.pow(nn, 0.8), 0, 1) * hide).toFixed(3));
-        if (def.feature) featurePos = { x: pos.x, y: pos.y, sc: sc, n: nn };
+      if (!L || !state.lut) return;
+      var T = state.lut[name], list = state.byOrbit[name], off = state.off[name], N = LUT_N, fp = null;
+      for (var i = 0; i < list.length; i++) {
+        var s = list[i], def = s.def;
+        var f = ((def.theta + off) / TAU) % 1;
+        f = (f < 0 ? f + 1 : f) * N;
+        if (f >= N) f -= N;
+        var i0 = f | 0, t = f - i0, i1 = i0 + 1 === N ? 0 : i0 + 1;
+        var bg = T.bg[i0] === T.bg[i1] ? T.bg[i0] : (lerp(T.z[i0], T.z[i1], t) > 0 ? 1 : 0);
+        if (s.bg !== bg) { (bg ? starsFar : starsNear).appendChild(s.el); s.bg = bg; }   // reparent only on a real depth change
+        var x = lerp(T.x[i0], T.x[i1], t), y = lerp(T.y[i0], T.y[i1], t);
+        var sc = def.size * (def.feature ? 1.15 : 1) * lerp(T.k[i0], T.k[i1], t);
+        var oa = bg ? T.of : T.on;
+        var tf = "translate3d(" + x.toFixed(2) + "px," + y.toFixed(2) + "px,0) scale(" + (sc / s.ref).toFixed(4) + ")";
+        var op = lerp(oa[i0], oa[i1], t).toFixed(3);
+        if (tf !== s.tf) { s.el.style.transform = tf; s.tf = tf; }
+        if (op !== s.op) { s.el.style.opacity = op; s.op = op; }
+        if (def.feature) fp = { x: x, y: y, sc: sc, n: lerp(T.n[i0], T.n[i1], t) };
       }
-      if (featurePos) {
-        feature.style.transform = "translate(" + featurePos.x.toFixed(1) + "px," + featurePos.y.toFixed(1) + "px)";
+      if (fp) {
+        var ft = "translate(" + fp.x.toFixed(1) + "px," + fp.y.toFixed(1) + "px)";
+        if (ft !== state.ft) { feature.style.transform = ft; state.ft = ft; }
         var lw = state.labelW, lh = state.labelH, pad = 14;
-        var lx = clamp(featurePos.x - lw / 2, pad, W - lw - pad);
-        var ly = clamp(featurePos.y + 26 * L.u + 14 * featurePos.sc, pad, H - lh - pad);
-        label.style.transform = "translate(" + lx.toFixed(1) + "px," + ly.toFixed(1) + "px)";
-        label.style.opacity = (0.32 + 0.26 * featurePos.n).toFixed(3);
+        var lx = clamp(fp.x - lw / 2, pad, L.W - lw - pad);
+        var ly = clamp(fp.y + 26 * L.u + 14 * fp.sc, pad, L.H - lh - pad);
+        var lt = "translate(" + lx.toFixed(1) + "px," + ly.toFixed(1) + "px)";
+        if (lt !== state.lt) { label.style.transform = lt; state.lt = lt; }
+        var lo = (0.32 + 0.26 * fp.n).toFixed(3);
+        if (lo !== state.lo) { label.style.opacity = lo; state.lo = lo; }
       }
     }
-
     // Animated particles only: drifting motes and twinkles on one shared canvas
     function render(t) {
       var L = state.L;
@@ -1015,8 +1044,10 @@
       if (!h) return;
       drag.acc += angDiff(h.th, drag.last);
       drag.last = h.th;
-      state.off[drag.name] = drag.off0 + drag.acc;
-      placeStars();
+            var no = drag.off0 + drag.acc;
+      if (no === state.off[drag.name]) return;     // nothing moved
+      state.off[drag.name] = no;
+      placeOrbit(drag.name);
     }
     function endDrag() {
       if (!drag) return;
