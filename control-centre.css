@@ -55,6 +55,15 @@
 .cc-svg-near  { z-index: 5; }
 .cc-stars-far  { z-index: 3; }
 .cc-stars-near { z-index: 5; }
+/* Movable stars: one small pre-rendered element each, positioned by transform only */
+.cc-pstar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.cc-pstar > svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .cc-dust-near { z-index: 6; }
 .cc-ui        { z-index: 7; }
 
