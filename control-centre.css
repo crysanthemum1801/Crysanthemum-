@@ -26,7 +26,7 @@
   isolation: isolate;
   user-select: none;
   -webkit-user-select: none;
-  touch-action: manipulation;
+    touch-action: none;
 }
 
 /* ─── Stacking order (bottom → top) ─────────────────────────
@@ -48,6 +48,8 @@
 }
 .cc-bg        { z-index: 1; }
 .cc-dust-far  { z-index: 2; }
+.cc-anim      { z-index: 2; }
+.cc-root.cc-dragging { cursor: grabbing; }
 .cc-svg-far   { z-index: 3; }
 .cc-star      { z-index: 4; }
 .cc-svg-near  { z-index: 5; }
