@@ -26,7 +26,7 @@
   isolation: isolate;
   user-select: none;
   -webkit-user-select: none;
-    touch-action: none;
+  touch-action: none;
 }
 
 /* ─── Stacking order (bottom → top) ─────────────────────────
@@ -76,48 +76,41 @@
 
 /* Wide atmospheric scatter: warm centre fading through amber into a cool veil */
 .cc-star__halo {
-  width: calc(var(--cc-d) * 7.2);
-  height: calc(var(--cc-d) * 7.2);
-  margin: calc(var(--cc-d) * -3.6) 0 0 calc(var(--cc-d) * -3.6);
+  width: calc(var(--cc-d) * 3.4);
+  height: calc(var(--cc-d) * 3.4);
+  margin: calc(var(--cc-d) * -1.7) 0 0 calc(var(--cc-d) * -1.7);
   border-radius: 50%;
   background:
-    radial-gradient(circle at 50% 50%,
-      rgba(255, 242, 214, 0.20) 0%,
-      rgba(242, 196, 125, 0.14) 11%,
-      rgba(216, 155, 72, 0.085) 22%,
-      rgba(168, 205, 232, 0.05) 34%,
-      rgba(127, 168, 201, 0.028) 44%,
-      rgba(127, 168, 201, 0) 62%);
-  animation: cc-breathe-halo 14s ease-in-out infinite alternate;
+    radial-gradient(circle closest-side at 50% 50%,
+      rgba(214, 180, 124, 0.07) 0%,
+      rgba(185, 133, 72, 0.04) 30%,
+      rgba(120, 153, 181, 0.018) 58%,
+      rgba(120, 153, 181, 0) 100%);
 }
 
 /* Corona: two offset layers so the edge reads as light with volume, not a disc */
 .cc-star__corona {
-  width: calc(var(--cc-d) * 2.9);
-  height: calc(var(--cc-d) * 2.9);
-  margin: calc(var(--cc-d) * -1.45) 0 0 calc(var(--cc-d) * -1.45);
+  width: calc(var(--cc-d) * 1.7);
+  height: calc(var(--cc-d) * 1.7);
+  margin: calc(var(--cc-d) * -0.85) 0 0 calc(var(--cc-d) * -0.85);
   border-radius: 50%;
   background:
     radial-gradient(circle closest-side at 50% 50%,
-      rgba(255, 247, 230, 0.95) 0%,
-      rgba(255, 233, 190, 0.78) 17%,
-      rgba(242, 196, 125, 0.52) 28%,
-      rgba(216, 155, 72, 0.30) 38%,
-      rgba(216, 155, 72, 0.13) 52%,
-      rgba(168, 205, 232, 0.05) 70%,
-      rgba(168, 205, 232, 0) 100%);
-  animation: cc-breathe-corona 11s ease-in-out infinite alternate;
+      rgba(240, 223, 194, 0.2) 0%,
+      rgba(214, 180, 124, 0.15) 30%,
+      rgba(185, 133, 72, 0.08) 52%,
+      rgba(185, 133, 72, 0.028) 76%,
+      rgba(120, 153, 181, 0) 100%);
 }
 .cc-star__corona--cool {
-  width: calc(var(--cc-d) * 3.8);
-  height: calc(var(--cc-d) * 3.8);
-  margin: calc(var(--cc-d) * -1.9) 0 0 calc(var(--cc-d) * -1.9);
+  width: calc(var(--cc-d) * 2.4);
+  height: calc(var(--cc-d) * 2.4);
+  margin: calc(var(--cc-d) * -1.2) 0 0 calc(var(--cc-d) * -1.2);
   background:
     radial-gradient(ellipse 52% 46% at 46% 54%,
-      rgba(168, 205, 232, 0.075) 0%,
-      rgba(127, 168, 201, 0.045) 38%,
+      rgba(168, 197, 220, 0.035) 0%,
+      rgba(120, 153, 181, 0.02) 38%,
       rgba(127, 168, 201, 0) 72%);
-  animation: cc-breathe-corona 17s ease-in-out -6s infinite alternate;
 }
 
 /* Stellar body */
@@ -162,7 +155,6 @@
   height: calc(var(--cc-d) * 6);
   margin: calc(var(--cc-d) * -3) 0 0 calc(var(--cc-d) * -3);
   mix-blend-mode: screen;
-  animation: cc-breathe-rays 13s ease-in-out -3s infinite alternate;
 }
 
 @keyframes cc-breathe-halo {
@@ -195,7 +187,7 @@
   font-size: clamp(12px, 0.95vw, 16px);
   line-height: 1.2;
   letter-spacing: 0.16em;
-  color: #ecd7aa;
+  color: #d6b47c;
   opacity: 0.45;
   /* No box, pill or border: a soft dark halo keeps the words legible over light */
   text-shadow:
