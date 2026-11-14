@@ -57,12 +57,12 @@
     deep:   hex("#060a12"),
     space:  hex("#0d1524"),
     warm:   hex("#0f1829"),
-    amber:  hex("#d89b48"),
-    gold:   hex("#f2c47d"),
-    cream:  hex("#fff2d6"),
-    light:  hex("#fff7e6"),
-    blue:   hex("#7fa8c9"),
-    ice:    hex("#a8cde8"),
+    amber:  hex("#b98548"),
+    gold:   hex("#d6b47c"),
+    cream:  hex("#f0dfc2"),
+    light:  hex("#f4e6cc"),
+    blue:   hex("#7899b5"),
+    ice:    hex("#a8c5dc"),
     lane:   hex("#121926")
   };
 
@@ -230,16 +230,16 @@
 
   var ORBIT_STYLE = {
     upper: {
-      near: hex("#fff0cf"), far: hex("#8fb3d0"),
-      edge: hex("#f1f6fb"),
-      glow: hex("#d89b48"), glowFar: hex("#7fa8c9"),
+      near: hex("#f0dfc2"), far: hex("#7899b5"),
+      edge: hex("#e8e2d2"),
+      glow: hex("#b98548"), glowFar: hex("#7899b5"),
       bright: makeBrightness(11, [[rad(-115), 0.55, 0.38], [rad(35), 0.5, 0.25], [rad(150), 0.4, 0.15]]),
       wob: makeBrightness(5, [])
     },
     lower: {
-      near: hex("#f7cd8a"), far: hex("#b4b8b0"),
-      edge: hex("#fff2d6"),
-      glow: hex("#d89b48"), glowFar: hex("#a8cde8"),
+      near: hex("#d6b47c"), far: hex("#8f979c"),
+      edge: hex("#f0dfc2"),
+      glow: hex("#b98548"), glowFar: hex("#a8c5dc"),
       bright: makeBrightness(23, [[rad(-70), 0.5, 0.4], [rad(95), 0.45, 0.22], [rad(200), 0.5, 0.2]]),
       wob: makeBrightness(9, [])
     }
@@ -262,7 +262,7 @@
   }
 
   // Builds the far-half and near-half markup for one orbit
-    function buildOrbitMarkup(orbit, style, u, st) {
+  function buildOrbitMarkup(orbit, style, u, st) {
     var N = 420, i;
     var far = [[], [], [], [], []], near = [[], [], [], [], []];
     var glowFar = [], glowNear = [];
@@ -276,20 +276,20 @@
       var a = pts[i], b = pts[i + 1];
       var thm = (i + 0.5) / N * TAU;
       var z = (a.z + b.z) / 2, d = (a.d + b.d) / 2, n = 1 - d;
-            var br = style.bright(thm);
+      var br = style.bright(thm);
       var mx = (a.x + b.x) / 2 - st.cx, my = (a.y + b.y) / 2 - st.cy;
       var nb = smooth(1.5, 0.75, Math.sqrt(mx * mx + my * my) / st.r);
       var back = z > 0 ? 0.64 - 0.3 * nb : 1 - 0.4 * nb;
       var body = mixc(style.near, style.far, smooth(0.25, 0.9, d));
-      var w = u * lerp(0.6, 2.0, Math.pow(n, 1.25)) * (0.82 + 0.34 * style.wob(thm)) * (1 - 0.25 * nb);
-      var op = clamp(lerp(0.16, 0.95, Math.pow(n, 1.1)) * br * back, 0.04, 1);
+      var w = u * lerp(0.5, 1.5, Math.pow(n, 1.25)) * (0.82 + 0.34 * style.wob(thm)) * (1 - 0.25 * nb);
+      var op = clamp(lerp(0.12, 0.74, Math.pow(n, 1.1)) * br * back, 0.04, 1);
       var bucket = (z > 0 ? far : near)[bandOf(d)];
       bucket.push(ln(a, b, rgbS(body), w, op));
       bucket.push(ln(edge[i], edge[i + 1], rgbS(style.edge), w * 0.42, clamp(op * 0.95, 0, 1)));
       if (i % 3 === 0) {
         var c = pts[Math.min(i + 3, N)];
         var gl = ln(a, c, rgbS(mixc(style.glow, style.glowFar, smooth(0.2, 0.9, d))),
-                    w * 4.2, (0.035 + 0.07 * n * br) * back * back);
+          w * 3.2, (0.018 + 0.036 * n * br) * back * back);
         (z > 0 ? glowFar : glowNear).push(gl);
       }
     }
@@ -309,8 +309,8 @@
 
   var TINTS = {
     cream: { glow: C.cream, core: C.light, spike: C.cream },
-    gold:  { glow: C.gold,  core: hex("#ffe7b8"), spike: C.gold },
-    ice:   { glow: C.ice,   core: hex("#eef8ff"), spike: C.ice }
+    gold:  { glow: C.gold,  core: hex("#e8cf9e"), spike: C.gold },
+    ice:   { glow: C.ice,   core: hex("#d9e7f1"), spike: C.ice }
   };
 
   function defsMarkup(id, W, H, u) {
@@ -325,9 +325,9 @@
     // Star glows
     Object.keys(TINTS).forEach(function (k) {
       var t = TINTS[k];
-      s += '<radialGradient id="' + id + "-g-" + k + '"><stop offset="0" stop-color="#fff" stop-opacity="0.95"/>' +
-        '<stop offset="0.16" stop-color="' + rgbS(t.glow) + '" stop-opacity="0.55"/>' +
-        '<stop offset="0.42" stop-color="' + rgbS(t.glow) + '" stop-opacity="0.16"/>' +
+      s += '<radialGradient id="' + id + "-g-" + k + '"><stop offset="0" stop-color="#f6ead2" stop-opacity="0.72"/>' +
+        '<stop offset="0.16" stop-color="' + rgbS(t.glow) + '" stop-opacity="0.34"/>' +
+        '<stop offset="0.42" stop-color="' + rgbS(t.glow) + '" stop-opacity="0.09"/>' +
         '<stop offset="1" stop-color="' + rgbS(t.glow) + '" stop-opacity="0"/></radialGradient>';
       s += '<linearGradient id="' + id + "-s-" + k + '" x1="0" y1="0" x2="0" y2="1">' +
         '<stop offset="0" stop-color="' + rgbS(t.spike) + '" stop-opacity="0"/>' +
@@ -338,7 +338,7 @@
 
   function starMarkup(id, tint, feature) {
     var t = TINTS[tint];
-    var glowR = feature ? 34 : 24;
+    var glowR = feature ? 22 : 15;
     var long = feature ? 58 : 36;
     var mid = feature ? 26 : 16;
     var core = feature ? 8 : 5.5;
@@ -346,11 +346,11 @@
     return '<circle r="' + glowR + '" fill="url(#' + id + "-g-" + tint + ')"/>' +
       '<path d="' + star4(long * 0.1, long, 0.04) + '" fill="url(#' + id + "-g-" + tint + ')" opacity="0.85"/>' +
       '<path d="' + star4(long, long * 0.1, 0.04) + '" fill="url(#' + id + "-g-" + tint + ')" opacity="0.85"/>' +
-            '<path d="' + star4(long * 0.045, long * 1.5, 0.02) + '" fill="#fff6e2" opacity="0.5"/>' +
-      '<path d="' + star4(long * 1.5, long * 0.045, 0.02) + '" fill="#fff6e2" opacity="0.5"/>' +
+      '<path d="' + star4(long * 0.045, long * 1.15, 0.02) + '" fill="#f0dfc2" opacity="0.32"/>' +
+      '<path d="' + star4(long * 1.15, long * 0.045, 0.02) + '" fill="#f0dfc2" opacity="0.32"/>' +
       '<path d="' + star4(mid * 0.5, mid, 0.1) + '" fill="' + rgbS(t.glow) + '" opacity="0.55"/>' +
       '<path d="' + star4(core, coreY, 0.09) + '" fill="' + rgbS(t.core) + '"/>' +
-      '<circle r="' + (feature ? 2.2 : 1.6) + '" fill="#fff"/>';
+      '<circle r="' + (feature ? 2 : 1.4) + '" fill="#f6ead2"/>';
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -372,7 +372,7 @@
     ctx.fillRect(0, 0, W, H);
 
     // ── Galaxy + faint ambient nebula rendered per-pixel at low resolution
-        var sc = Math.min(0.5, 800 / W) * ((L.perf || 1) < 1 ? 0.8 : 1);
+    var sc = Math.min(0.5, 800 / W) * ((L.perf || 1) < 1 ? 0.8 : 1);
     var bw = Math.max(2, Math.ceil(W * sc)), bh = Math.max(2, Math.ceil(H * sc));
     var buf = document.createElement("canvas");
     buf.width = bw; buf.height = bh;
@@ -419,7 +419,7 @@
           var lane = Math.exp(-Math.pow((nv - 0.58 + 0.3 * (warp - 0.5)) / 0.15, 2)) * smooth(2.6, 0.4, e2);
           var keep = 1 - 0.86 * lane;
 
-          var kA = 0.46 * keep, kB = 0.46 * keep, kC = 0.34 * keep, kH = 0.05;
+          var kA = 0.13 * keep, kB = 0.11 * keep, kC = 0.06 * keep, kH = 0.025;
           r = C.amber[0] * gasA * kA + C.blue[0] * gasB * kB + C.cream[0] * core * kC + C.gold[0] * base1 * kH;
           g = C.amber[1] * gasA * kA + C.blue[1] * gasB * kB + C.cream[1] * core * kC + C.gold[1] * base1 * kH;
           b = C.amber[2] * gasA * kA + C.blue[2] * gasB * kB + C.cream[2] * core * kC + C.gold[2] * base1 * kH;
@@ -427,23 +427,23 @@
 
         // Very faint ambient clouds elsewhere, cool far from the star and warm near it
         var amb = noise.fbm2(x / W * 2.4 + 40.0, y / H * 2.0 + 12.0, 4);
-        var am = smooth(0.50, 0.78, amb) * 0.085;
+        var am = smooth(0.50, 0.78, amb) * 0.05;
         var dxs = (x - L.cx) / W, dys = (y - L.cy) / H;
         var warmth = Math.exp(-(dxs * dxs + dys * dys) * 5.0);
         r += lerp(C.blue[0], C.amber[0], warmth) * am;
         g += lerp(C.blue[1], C.amber[1], warmth) * am;
         b += lerp(C.blue[2], C.amber[2], warmth) * am;
 
-                // Wispy gas filaments (domain-warped ridged noise) + dark dust ridges
+        // Wispy gas filaments (domain-warped ridged noise) + dark dust ridges
         var fx = x / W, fy = y / H;
         var qx = noise.fbm2(fx * 2.0 + 17.0, fy * 2.0 + 3.0, 3), qy = noise.fbm2(fx * 2.0 + 41.0, fy * 2.0 + 29.0, 3);
         var rg = 1 - Math.abs(2 * noise.fbm2(fx * 3.4 + 2.4 * qx, fy * 3.4 + 2.4 * qy, 4) - 1);
         var fil = Math.pow(rg, 7) * smooth(0.38, 0.7, noise.fbm2(fx * 1.7 + 60.0, fy * 1.7 + 10.0, 3)) *
           (0.18 + clamp(Math.abs(dxs) * 1.7, 0, 1)) * (1 - 0.65 * warmth);
         var hue = smooth(0.46, 0.54, noise.fbm2(fx * 1.3 + 90.0, fy * 1.3 + 50.0, 2));
-        r += lerp(C.blue[0], C.amber[0], hue) * fil * 0.9;
-        g += lerp(C.blue[1], C.amber[1], hue) * fil * 0.9;
-        b += lerp(C.blue[2], C.amber[2], hue) * fil * 0.9;
+        r += lerp(C.blue[0], C.amber[0], hue) * fil * 0.3;
+        g += lerp(C.blue[1], C.amber[1], hue) * fil * 0.3;
+        b += lerp(C.blue[2], C.amber[2], hue) * fil * 0.3;
         var dk = 1 - 0.34 * smooth(0.74, 0.97, 1 - Math.abs(2 * noise.fbm2(fx * 2.6 + 3.0 * qy, fy * 2.6 + 3.0 * qx + 7.0, 4) - 1)) * smooth(3.2, 0.3, e2);
         r *= dk; g *= dk; b *= dk;
 
@@ -472,7 +472,7 @@
     // ── Sparse starfield (+ a denser scatter of tiny stars through the galaxy)
     var rand = rng(90210);
     var colors = [C.cream, C.cream, C.cream, C.ice, C.ice, C.gold];
-        function dot(x, y, rr, a, col) {
+    function dot(x, y, rr, a, col) {
       ctx.fillStyle = rgbaS(col, a);
       ctx.beginPath();
       ctx.arc(x, y, rr, 0, TAU);
@@ -493,12 +493,12 @@
         ctx.stroke();
       }
     }
-    var count = Math.round(W * H / 7000 * (L.perf || 1)), s;
+    var count = Math.round(W * H / 11000 * (L.perf || 1)), s;
     for (s = 0; s < count; s++) {
-            dot(rand() * W, rand() * H, 0.25 + Math.pow(rand(), 4.2) * 1.5,
+      dot(rand() * W, rand() * H, 0.25 + Math.pow(rand(), 4.2) * 1.5,
         0.18 + 0.62 * rand() * rand(), colors[(rand() * colors.length) | 0]);
     }
-        var gcount = Math.round(W * H / 14000 * (L.perf || 1));
+    var gcount = Math.round(W * H / 40000 * (L.perf || 1));
     for (s = 0; s < gcount; s++) {
       var gu = (rand() * 2 - 1) * ga * 0.85, gv = (rand() * 2 - 1) * gb * 0.8;
       if ((gu * gu) / (ga * ga * 0.72) + (gv * gv) / (gb * gb * 0.72) > 1) continue;
@@ -512,10 +512,10 @@
   // ═══════════════════════════════════════════════════════════
   var RAMP = [
     [-0.05, hex("#a86a2a")],
-    [0.16,  hex("#d89b48")],
+    [0.16,  hex("#b98548")],
     [0.42,  hex("#f2c47d")],
     [0.70,  hex("#ffe6b4")],
-    [0.92,  hex("#fff2d6")],
+    [0.92,  hex("#f0dfc2")],
     [1.10,  hex("#fff9ee")]
   ];
   function ramp(w) {
@@ -529,37 +529,46 @@
     return RAMP[RAMP.length - 1][1];
   }
 
-    function paintStarSurface(canvas, size, noise, perf) {
-    var S = clamp(Math.round(size), 160, 1100);
+  function paintStarSurface(canvas, size, noise, perf) {
+    var S = clamp(Math.round(size), 160, 800);
     canvas.width = S; canvas.height = S;
     var ctx = canvas.getContext("2d");
-    var h = S / 2, rand = rng(31337), k = S / 560;
+    var h = S / 2, rand = rng(31337), k = S / 560, i;
     ctx.globalCompositeOperation = "lighter";
-    var g = ctx.createRadialGradient(h, h, 0, h, h, h);
-    [[0, "255,250,238,1"], [0.04, "255,240,205,0.9"], [0.1, "255,222,160,0.62"], [0.22, "246,200,124,0.38"],
-     [0.4, "220,160,76,0.17"], [0.62, "190,150,110,0.07"], [0.82, "150,190,225,0.025"], [1, "150,190,225,0"]
+    // Soft body: warm champagne core falling quickly into muted amber, then dark
+    var g = ctx.createRadialGradient(h, h, 0, h, h, h * 0.8);
+    [[0, "214,180,124,0.42"], [0.1, "214,180,124,0.3"], [0.3, "185,133,72,0.17"],
+     [0.6, "185,133,72,0.07"], [1, "120,153,181,0"]
     ].forEach(function (s) { g.addColorStop(s[0], "rgba(" + s[1] + ")"); });
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, S, S);
-    // Particles: soft spiral arms, flattened along the orbital plane
+    // Translucent amber / cerulean wisps forming the outer shell
+    var wn = Math.round(110 * (perf || 1));
+    for (i = 0; i < wn; i++) {
+      var wa = rand() * TAU, wr = (0.46 + 0.26 * rand()) * h;
+      var wx = h + Math.cos(wa) * wr, wy = h + Math.sin(wa) * wr * 0.86;
+      var ws = (0.14 + 0.2 * rand()) * h;
+      var wc = rand() < 0.62 ? C.amber : C.blue;
+      var wg = ctx.createRadialGradient(wx, wy, 0, wx, wy, ws);
+      wg.addColorStop(0, rgbaS(wc, 0.045 + 0.04 * rand()));
+      wg.addColorStop(1, rgbaS(wc, 0));
+      ctx.fillStyle = wg;
+      ctx.fillRect(wx - ws, wy - ws, ws * 2, ws * 2);
+    }
+    // Fine stellar particles: dense small cluster, thinning outward
     var ca = Math.cos(rad(-18)), sa = Math.sin(rad(-18));
-    var n = Math.round(S * 120 * (perf || 1)), i = 0, guard = 0;
-    while (i < n && guard++ < n * 8) {
-      var a = rand() * TAU, rho = Math.pow(rand(), 1.7) * 0.94;
-      var arm = 0.5 + 0.5 * Math.cos(2 * (a - rho * 3.2));
-      var ex = Math.cos(a) * rho, ey = Math.sin(a) * rho * 0.82;
+    var n = Math.round(S * 38 * (perf || 1)), c = 0, guard = 0;
+    while (c < n && guard++ < n * 6) {
+      var a = rand() * TAU, rho = Math.pow(rand(), 1.5) * 0.8;
+      var ex = Math.cos(a) * rho, ey = Math.sin(a) * rho * 0.86;
       var x = h + (ex * ca - ey * sa) * h, y = h + (ex * sa + ey * ca) * h;
-      var d = noise.fbm2(x / S * 4.6 + 3.0, y / S * 4.6 + 8.0, 4);
-      if (rand() > (0.18 + 0.9 * d) * (0.45 + 0.7 * arm) * (1 - rho * 0.5)) continue;
-      var col = rho < 0.2 ? C.cream : rho < 0.5 ? mixc(C.cream, C.gold, (rho - 0.2) / 0.3) : mixc(C.gold, rand() < 0.3 ? C.ice : C.amber, (rho - 0.5) / 0.44);
-      var rr = (0.2 + Math.pow(rand(), 4) * 1.1) * k;
-      ctx.fillStyle = rgbaS(col, (0.12 + 0.5 * rand()) * (1 - rho * 0.5));
+      var d = noise.fbm2(x / S * 5.0 + 3.0, y / S * 5.0 + 8.0, 3);
+      if (rand() > 0.25 + 0.9 * d) continue;
+      var col = rho < 0.16 ? C.cream : rho < 0.45 ? mixc(C.cream, C.gold, (rho - 0.16) / 0.29) : (rand() < 0.3 ? C.ice : C.gold);
+      var rr = (0.22 + Math.pow(rand(), 4) * 0.9) * k;
+      ctx.fillStyle = rgbaS(col, (0.14 + 0.46 * rand()) * (1 - rho * 0.6));
       ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.fill();
-      if (rr > 0.9 * k) {
-        ctx.fillStyle = rgbaS(col, 0.05);
-        ctx.beginPath(); ctx.arc(x, y, rr * 2.6, 0, TAU); ctx.fill();
-      }
-      i++;
+      c++;
     }
   }
 
@@ -635,7 +644,7 @@
     root.setAttribute("aria-label", "Control Centre");
     root.innerHTML =
       '<canvas class="cc-layer cc-bg" aria-hidden="true"></canvas>' +
-            '<canvas class="cc-layer cc-anim" aria-hidden="true"></canvas>' +
+      '<canvas class="cc-layer cc-anim" aria-hidden="true"></canvas>' +
       '<canvas class="cc-layer cc-dust-far" aria-hidden="true"></canvas>' +
       '<svg class="cc-layer cc-svg-far" aria-hidden="true" focusable="false"></svg>' +
       '<svg class="cc-layer cc-stars-far" aria-hidden="true" focusable="false"></svg>' +
@@ -657,7 +666,7 @@
 
     var q = function (s) { return root.querySelector(s); };
     var bgCanvas = q(".cc-bg"), farCanvas = q(".cc-dust-far"), nearCanvas = q(".cc-dust-near");
-        var svgFar = q(".cc-svg-far"), svgNear = q(".cc-svg-near");
+    var svgFar = q(".cc-svg-far"), svgNear = q(".cc-svg-near");
     var animCanvas = q(".cc-anim"), animCtx = animCanvas.getContext("2d");
     var starsFar = q(".cc-stars-far"), starsNear = q(".cc-stars-near");
     var starEl = q(".cc-star"), surface = q(".cc-star__surface"), rays = q(".cc-star__rays");
@@ -676,12 +685,12 @@
 
     var state = {
       L: null, orbits: null, dust: null, stars: [], ambient: [], twinkles: [],
-            dynDpr: 1, animDpr: 1, surfaceSize: 0, labelW: 0, labelH: 0, off: { upper: 0, lower: 0 }, path: null,
+      dynDpr: 1, animDpr: 1, surfaceSize: 0, labelW: 0, labelH: 0, off: { upper: 0, lower: 0 }, path: null,
       perf: 1, time: 0, last: 0, suppress: false,
       reduced: false, raf: 0, t0: 0, destroyed: false, resizeTimer: 0, lastKey: ""
     };
 
-        // Device capability: tablets / low-core / low-memory devices get fewer particles and a lower DPR cap
+    // Device capability: tablets / low-core / low-memory devices get fewer particles and a lower DPR cap
     var nav = global.navigator || {};
     var lowPower = !!(global.matchMedia && global.matchMedia("(pointer: coarse)").matches) ||
       (nav.hardwareConcurrency || 8) <= 4 || (nav.deviceMemory || 8) <= 4;
@@ -693,7 +702,7 @@
     // ── Dust: clustered along selected stretches of each orbit
     function makeDust(L) {
       var rand = rng(4242);
-            var per = clamp(Math.round(L.W * L.H / 3600 * L.perf), 160, 480);
+      var per = clamp(Math.round(L.W * L.H / 9000 * L.perf), 90, 220);
       var out = { upper: [], lower: [] };
       ["upper", "lower"].forEach(function (name, oi) {
         var centres = [];
@@ -731,7 +740,7 @@
 
     function makeAmbient(L) {
       var rand = rng(777);
-            var n = clamp(Math.round(L.W * L.H / 24000 * L.perf), 20, 80);
+      var n = clamp(Math.round(L.W * L.H / 60000 * L.perf), 8, 28);
       var list = [];
       for (var i = 0; i < n; i++) {
         list.push({
@@ -744,7 +753,7 @@
         });
       }
       var tw = [];
-      var tn = clamp(Math.round(L.W * L.H / 70000), 8, 24);
+      var tn = clamp(Math.round(L.W * L.H / 120000 * L.perf), 5, 12);
       for (var k = 0; k < tn; k++) {
         tw.push({
           x: rand() * L.W, y: rand() * L.H, size: 1.0 + rand() * 1.4,
@@ -760,10 +769,10 @@
       if (W < 40 || H < 40) return;
       var L = computeLayout(W, H);
       state.L = L;
-            state.perf = lowPower ? 0.65 : 1;
+      state.perf = lowPower ? 0.65 : 1;
       L.perf = state.perf;
       var dpr = Math.min(global.devicePixelRatio || 1, lowPower ? 1.5 : 2);
-            state.dynDpr = dpr;
+      state.dynDpr = dpr;
       state.animDpr = Math.min(global.devicePixelRatio || 1, lowPower ? 1 : 1.5);
       animCanvas.width = Math.round(W * state.animDpr);
       animCanvas.height = Math.round(H * state.animDpr);
@@ -778,7 +787,7 @@
       });
 
       // Orbits
-            state.orbits = { upper: makeOrbit(L.upper), lower: makeOrbit(L.lower) };
+      state.orbits = { upper: makeOrbit(L.upper), lower: makeOrbit(L.lower) };
       // Fixed path samples used to map a drag position onto an orbit
       state.path = {};
       ["upper", "lower"].forEach(function (name) {
@@ -786,8 +795,8 @@
         for (var pi = 0; pi < 360; pi++) { var pth = pi / 360 * TAU, pp = state.orbits[name].point(pth); P.push({ x: pp.x, y: pp.y, th: pth }); }
         state.path[name] = P;
       });
-            var mu = buildOrbitMarkup(state.orbits.upper, ORBIT_STYLE.upper, L.u, L);
-            var ml = buildOrbitMarkup(state.orbits.lower, ORBIT_STYLE.lower, L.u, L);
+      var mu = buildOrbitMarkup(state.orbits.upper, ORBIT_STYLE.upper, L.u, L);
+      var ml = buildOrbitMarkup(state.orbits.lower, ORBIT_STYLE.lower, L.u, L);
 
       function layerMarkup(half, glowKey, idp) {
         var s = '<g fill="none" stroke-linecap="butt">';
@@ -818,9 +827,9 @@
 
       // Central star
       starEl.style.transform = "translate(" + L.cx.toFixed(1) + "px," + L.cy.toFixed(1) + "px)";
-            var surfPx = Math.round(L.r * 2 * 2.6 * dpr);
+      var surfPx = Math.round(L.r * 2 * 2.6 * dpr);
       if (Math.abs(surfPx - state.surfaceSize) > 24 || !state.surfaceSize) {
-                paintStarSurface(surface, surfPx, noise, state.perf);
+        paintStarSurface(surface, surfPx, noise, state.perf);
         state.surfaceSize = surfPx;
       }
 
@@ -836,7 +845,7 @@
 
       state.labelW = label.offsetWidth;
       state.labelH = label.offsetHeight;
-            drawStatic();
+      drawStatic();
       placeStars();
       render(state.time);
     }
@@ -847,7 +856,7 @@
       ctx.drawImage(sprites[name], x - size, y - size, size * 2, size * 2);
     }
 
-        // Static stardust: painted once per build, never redrawn per frame
+    // Static stardust: painted once per build, never redrawn per frame
     function drawStatic() {
       var L = state.L, dpr = state.dynDpr;
       [farCtx, nearCtx].forEach(function (c) {
@@ -1014,8 +1023,6 @@
     }, true);
 
     // ── Events
-      
-          
     function onMotionChange() {
       state.reduced = !!(mq && mq.matches);
       root.classList.toggle("cc-reduced", state.reduced);
@@ -1058,7 +1065,7 @@
       featureButton: feature,
       resize: rebuild,
       destroy: function () {
-                state.destroyed = true;
+        state.destroyed = true;
         document.removeEventListener("visibilitychange", onVis);
         root.removeEventListener("pointerdown", onDown);
         root.removeEventListener("pointermove", onMove);
