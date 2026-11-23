@@ -659,7 +659,8 @@
             '<div class="cc-layer cc-stars-near" aria-hidden="true"></div>' +
       '<canvas class="cc-layer cc-dust-near" aria-hidden="true"></canvas>' +
       '<div class="cc-ui">' +
-        '<span class="cc-label">Constellations</span>' +
+                '<span class="cc-label">Constellations</span>' +
+        '<button type="button" class="cc-exit" aria-label="Exit Control Centre"></button>' +
         '<button type="button" class="cc-feature" aria-label="Constellations"></button>' +
       '</div>';
     container.appendChild(root);
@@ -670,7 +671,7 @@
     var animCanvas = q(".cc-anim"), animCtx = animCanvas.getContext("2d");
     var starsFar = q(".cc-stars-far"), starsNear = q(".cc-stars-near");
     var starEl = q(".cc-star"), surface = q(".cc-star__surface"), rays = q(".cc-star__rays");
-    var label = q(".cc-label"), feature = q(".cc-feature");
+        var label = q(".cc-label"), feature = q(".cc-feature"), exitBtn = q(".cc-exit");
     rays.innerHTML = raysMarkup();
     // Unique ray gradient id per instance
     rays.innerHTML = rays.innerHTML.replace(/CCRAY/g, uid + "-ray");
@@ -852,7 +853,8 @@
       });
       state.stars.forEach(function (s) { state.byOrbit[s.def.orbit].push(s); });
       // Central star
-      starEl.style.transform = "translate(" + L.cx.toFixed(1) + "px," + L.cy.toFixed(1) + "px)";
+            starEl.style.transform = "translate(" + L.cx.toFixed(1) + "px," + L.cy.toFixed(1) + "px)";
+      exitBtn.style.transform = starEl.style.transform;
       var surfPx = Math.round(L.r * 2 * 2.6 * dpr);
       if (Math.abs(surfPx - state.surfaceSize) > 24 || !state.surfaceSize) {
         paintStarSurface(surface, surfPx, noise, state.perf);
@@ -928,6 +930,7 @@
         var op = lerp(oa[i0], oa[i1], t).toFixed(3);
         if (tf !== s.tf) { s.el.style.transform = tf; s.tf = tf; }
         if (op !== s.op) { s.el.style.opacity = op; s.op = op; }
+                s.hx = x; s.hy = y; s.hr = (def.feature ? 22 : 15) * sc;   // live hit area for starting an orbit drag on a star
         if (def.feature) fp = { x: x, y: y, sc: sc, n: lerp(T.n[i0], T.n[i1], t) };
       }
       if (fp) {
@@ -986,7 +989,7 @@
     document.addEventListener("visibilitychange", onVis);
 
     // ── Drag along an orbit: the path is fixed, only the attached stars slide
-    var drag = null, rectCache = null;
+        var drag = null, rectCache = null, press = null;
     function localXY(e) {
       var b = rectCache || root.getBoundingClientRect();
       return { x: e.clientX - b.left, y: e.clientY - b.top };
@@ -1000,25 +1003,36 @@
       }
       return best < 0 ? null : { th: P[best].th, d: Math.sqrt(bd) };
     }
-    function pickOrbit(p) {
+        function pickOrbit(p) {
       var tol = Math.max(22, 30 * state.L.u), pick = null;
       ["upper", "lower"].forEach(function (name) {
         var h = nearest(name, p.x, p.y);
         if (h && h.d < tol && (!pick || h.d < pick.d)) pick = { name: name, th: h.th, d: h.d };
       });
+      if (!pick) {
+        for (var si = 0; si < state.stars.length; si++) {
+          var s = state.stars[si];
+          if (s.hr && Math.hypot(p.x - s.hx, p.y - s.hy) < s.hr) {
+            var hs = nearest(s.def.orbit, p.x, p.y);
+            if (hs) { pick = { name: s.def.orbit, th: hs.th, d: hs.d }; break; }
+          }
+        }
+      }
       return pick;
     }
     function onDown(e) {
       if (!state.L || (e.pointerType === "mouse" && e.button !== 0)) return;
       rectCache = null;
-      var p = localXY(e), pick = pickOrbit(p);
+            var p = localXY(e), pick = pickOrbit(p);
+      press = (!pick && e.target === exitBtn) ? { id: e.pointerId, x0: p.x, y0: p.y, moved: false } : null;
       if (!pick) return;
       rectCache = root.getBoundingClientRect();
       drag = { id: e.pointerId, name: pick.name, x0: p.x, y0: p.y, last: pick.th, acc: 0, off0: state.off[pick.name], moved: false };
     }
     function onMove(e) {
       var p = localXY(e);
-      if (!drag) {
+            if (!drag) {
+        if (press && e.pointerId === press.id && !press.moved && Math.hypot(p.x - press.x0, p.y - press.y0) >= 9) press.moved = true;
         if (e.pointerType === "mouse" && state.L) root.style.cursor = pickOrbit(p) ? "grab" : "";
         return;
       }
@@ -1077,9 +1091,17 @@
     root.addEventListener("pointercancel", onUp);
     root.addEventListener("lostpointercapture", onLost);
     root.addEventListener("touchcancel", endDrag, { passive: true });
-    feature.addEventListener("click", function (e) {
+        feature.addEventListener("click", function (e) {
       if (state.suppress) { e.stopImmediatePropagation(); e.preventDefault(); }
     }, true);
+    exitBtn.addEventListener("click", function (e) {
+      var pr = press; press = null;
+      if (state.suppress || state.dragging) return;
+      // Pointer clicks must have started on the Control Star itself and not moved past the drag threshold; keyboard clicks (detail 0) are allowed
+      if (e.detail !== 0 && (!pr || pr.moved)) return;
+      cancelAnimationFrame(state.raf);
+      if (options.onExit) options.onExit();
+    });
 
     // ── Events
     function onMotionChange() {
@@ -1122,7 +1144,7 @@
       root: root,
       // The single designated feature control. No action is attached yet.
       featureButton: feature,
-      resize: rebuild,
+            resize: function () { rebuild(); start(); },
       destroy: function () {
         state.destroyed = true;
         document.removeEventListener("visibilitychange", onVis);
