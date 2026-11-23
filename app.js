@@ -2155,8 +2155,15 @@ function openControlCentre() {
   isPinching = false;
   el.style.display = "block";
   el.setAttribute("aria-hidden", "false");
-  if (!controlCentre) controlCentre = ChrysanthemumControlCentre.mount(el);
+    if (!controlCentre) controlCentre = ChrysanthemumControlCentre.mount(el, { onExit: closeControlCentre });
   else controlCentre.resize();
+}
+
+function closeControlCentre() {
+  const el = document.getElementById("control-centre");
+  if (!el) return;
+  el.style.display = "none";
+  el.setAttribute("aria-hidden", "true");
 }
 
 // ─── Long press ───
