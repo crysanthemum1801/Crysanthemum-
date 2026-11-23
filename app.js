@@ -1560,57 +1560,174 @@ function _softRng(seed) {                 // tiny deterministic PRNG so sprites 
 
 function _buildSoftSprite(kind, color, variant) {
   const [coreRGB, glowRGB] = starColorPalette(color);
-  const bloomRGB = _rgbMix(glowRGB, coreRGB, 0.45);   // slightly lighter, softer than the outer glow
+    const bloomRGB = _rgbMix(glowRGB, coreRGB, 0.45);   // slightly lighter, softer than the outer glow
 
-  if (kind === "core") {
+  // ── private light-building tools (local to this builder, nothing global added) ──
+  const rnd = _softRng(variant * 7919 + color.length * 104729 + color.charCodeAt(0) * 31 + kind.length * 977);
+  const cG = _rgbParse(glowRGB), cB = _rgbParse(bloomRGB), cC = _rgbParse(coreRGB);
+  // closed angular curve, 360 samples: a few sines with random phases (higher harmonics weaker)
+  const wave = (ks, amp) => {
+    const T = new Float32Array(360), ph = ks.map(() => rnd() * 6.283185);
+    for (let i = 0; i < 360; i++) {
+      let s = 0;
+      for (let j = 0; j < ks.length; j++) s += Math.sin(ks[j] * i * 0.0174533 + ph[j]) * (amp / (1 + j * 0.45));
+      T[i] = s;
+    }
+    return T;
+  };
+  // sample a 360-table at f = fraction of a full turn (0..1), linearly interpolated
+  const at = (T, f) => { const s = f * 360, i = s | 0, w = s - i; return T[i % 360] * (1 - w) + T[(i + 1) % 360] * w; };
+  // angle of (dx,dy) as a fraction of a full turn (0..1)
+  const turn = (dx, dy) => { const f = Math.atan2(dy, dx) / 6.283185; return f < 0 ? f + 1 : f; };
+  // smooth value noise on an n x n lattice; sample with u,v in 0..1
+  const lattice = (n) => {
+    const g = new Float32Array((n + 1) * (n + 1));
+    for (let i = 0; i < g.length; i++) g[i] = rnd();
+    return (u, v) => {
+      const fu = u * n, fv = v * n;
+      const i = Math.min(n - 1, fu | 0), j = Math.min(n - 1, fv | 0);
+      const a = fu - i, b = fv - j, sa = a * a * (3 - 2 * a), sb = b * b * (3 - 2 * b), k = j * (n + 1) + i;
+      return (g[k] * (1 - sa) + g[k + 1] * sa) * (1 - sb) + (g[k + n + 1] * (1 - sa) + g[k + n + 2] * sa) * sb;
+    };
+  };
+  // write one pixel: q = glow->bloom blend, k = push toward the core tint, a = alpha 0..1
+  const put = (p, i, q, k, a) => {
+    q = q < 0 ? 0 : q > 1 ? 1 : q; k = k < 0 ? 0 : k > 1 ? 1 : k;
+    const r0 = cG[0] + (cB[0] - cG[0]) * q, g0 = cG[1] + (cB[1] - cG[1]) * q, b0 = cG[2] + (cB[2] - cG[2]) * q;
+    p[i] = r0 + (cC[0] - r0) * k; p[i + 1] = g0 + (cC[1] - g0) * k; p[i + 2] = b0 + (cC[2] - b0) * k;
+    p[i + 3] = a <= 0 ? 0 : a >= 1 ? 255 : a * 255;
+  };
+  // tiny additive speck of light (3-stop radial gradient)
+  const dot = (cx, px, py, rad, a, rgb) => {
+    const g = cx.createRadialGradient(px, py, 0, px, py, rad);
+    g.addColorStop(0,    `rgba(${rgb},${a.toFixed(3)})`);
+    g.addColorStop(0.45, `rgba(${rgb},${(a * 0.32).toFixed(3)})`);
+    g.addColorStop(1,    `rgba(${rgb},0)`);
+    cx.fillStyle = g;
+    cx.fillRect(px - rad, py - rad, rad * 2, rad * 2);
+  };
+
+    if (kind === "core") {
+    // living light: off-centre luminous heart, slow mottling, slightly irregular contour, no flat fill
     const N = 64, H = N / 2, c = _softCanvas(N), x = c.getContext("2d");
-    x.fillStyle = _softGradient(x, H, H, H, r => [
-      _rgbMix(coreRGB, glowRGB, r * 0.6),
-      0.92 * (1 - _smooth(0.22, 1, r))
-    ]);
-    x.fillRect(0, 0, N, N);
+    const img = x.createImageData(N, N), p = img.data;
+    const cw = wave([2, 3, 5], 0.075);
+    const m1 = rnd() * 6.283, m2 = rnd() * 6.283, hx = (rnd() - 0.5) * 0.24, hy = (rnd() - 0.5) * 0.24;
+    for (let py = 0; py < N; py++) {
+      for (let px = 0; px < N; px++) {
+        const dx = (px + 0.5 - H) / H, dy = (py + 0.5 - H) / H;
+        const rr = Math.hypot(dx, dy) / (1 + at(cw, turn(dx, dy)));
+        const lum = Math.exp(-Math.pow(Math.hypot(dx - hx, dy - hy) / 0.42, 2));
+        const mot = Math.sin(dx * 5.3 + m1) * Math.sin(dy * 4.6 + m2);
+        put(p, (py * N + px) * 4, 0.35 + 0.30 * mot, 0.10 + 0.82 * lum + 0.10 * mot,
+            0.90 * (1 - _smooth(0.14, 1, rr)) * (1 + 0.10 * mot));
+      }
+    }
+    x.putImageData(img, 0, 0);
     return c;
   }
 
-  const N = 256, H = N / 2, c = _softCanvas(N), x = c.getContext("2d");
+    const N = kind === "ambient" ? 128 : kind === "ring" ? 192 : 160, H = N / 2, c = _softCanvas(N), x = c.getContext("2d");
 
   if (kind === "ambient") {
-    // inner bloom (tight) + outer ambient glow (wide), both gaussian-eased
-    x.fillStyle = _softGradient(x, H, H, H, r => {
-      const a1 = 0.30 * Math.exp(-Math.pow(r / 0.16, 2));
-      const a2 = 0.16 * Math.exp(-Math.pow(r / 0.42, 2));
-      const a = a1 + a2;
-      const w = a > 0 ? a1 / a : 0;
-      return [_rgbMix(glowRGB, bloomRGB, w), a * _softWindow(r)];
-    });
-    x.fillRect(0, 0, N, N);
+    // inner bloom + wide glow + faint far haze; reach and tint wander slightly with angle (no perfect disc)
+    const img = x.createImageData(N, N), p = img.data;
+    const aw = wave([2, 3, 5], 0.09), tw = wave([1, 3, 4], 0.5);
+    for (let py = 0; py < N; py++) {
+      for (let px = 0; px < N; px++) {
+        const dx = (px + 0.5 - H) / H, dy = (py + 0.5 - H) / H;
+        const r = Math.hypot(dx, dy), f = turn(dx, dy);
+        const rr = r / (1 + at(aw, f)), t = at(tw, f);
+        const a1 = 0.30 * Math.exp(-Math.pow(rr / 0.16, 2));
+        const a2 = 0.15 * Math.exp(-Math.pow(rr / 0.44, 2)) * (1 + 0.25 * t);
+        const a3 = 0.05 * Math.exp(-Math.pow(rr / 0.78, 2));
+        const s = a1 + a2 + a3 + 1e-9;
+        put(p, (py * N + px) * 4, a1 / s + 0.12 * t, 0.15 * a1 / s, s * _softWindow(r));
+      }
+    }
+    x.putImageData(img, 0, 0);
   } else if (kind === "ring") {
-    // ring made of light: soft band (~0.38 of radius) over a wider, fainter glow
+    // an irregular stream of energy: wandering centre-line, varying thickness, uneven intensity with
+    // natural thin places, diffuse glow inward + outward, scattered specks and a few drifting wisps
     const r0 = 0.38;
-    x.fillStyle = _softGradient(x, H, H, H, r => {
-      const band = 0.40 * Math.exp(-Math.pow((r - r0) / 0.035, 2));
-      const under = 0.07 * Math.exp(-Math.pow((r - r0) / 0.16, 2));
-      const a = band + under;
-      const w = a > 0 ? band / a : 0;
-      return [_rgbMix(glowRGB, bloomRGB, w), a * _softWindow(r)];
-    });
-    x.fillRect(0, 0, N, N);
-  } else if (kind === "radiant") {
-    // a drifting cloud: broad base + several overlapping soft lobes (no rays, no symmetry)
-    const rnd = _softRng(variant * 7919 + color.length * 104729 + color.charCodeAt(0));
+    const cw = wave([2, 3, 5, 7], 0.06), kw = wave([2, 4, 6], 0.45), iw = wave([1, 2, 3, 5], 0.55);
+    const I = new Float32Array(360), RC = new Float32Array(360), TK = new Float32Array(360);
+    for (let i = 0; i < 360; i++) {
+      I[i]  = 0.15 + 0.85 * _smooth(-0.55, 0.45, iw[i]);
+      RC[i] = r0 * (1 + cw[i]);
+      TK[i] = Math.max(0.022, 0.05 * (1 + kw[i]));
+    }
+    const img = x.createImageData(N, N), p = img.data;
+    for (let py = 0; py < N; py++) {
+      for (let px = 0; px < N; px++) {
+        const dx = (px + 0.5 - H) / H, dy = (py + 0.5 - H) / H;
+        const r = Math.hypot(dx, dy), f = turn(dx, dy);
+        const iv = at(I, f), tk = at(TK, f), d = r - at(RC, f);
+        const M = iv * Math.exp(-Math.pow(d / tk, 2)) * 0.28;                                  // main energy
+        const S = (0.4 + 0.6 * iv) * Math.exp(-Math.pow(d / (tk * (d < 0 ? 3.8 : 3.0)), 2)) * 0.11;   // diffuse, wider inward
+        const A = 0.045 * Math.exp(-Math.pow((r - r0) / 0.24, 2));                              // ambient foundation
+        const B = Math.max(0, iv - 0.55) * 0.10 * Math.exp(-Math.pow(d / (tk * 6), 2));         // bloom on bright stretches
+        const s = M + S + A + B + 1e-9;
+        put(p, (py * N + px) * 4, (M + B) / s, Math.max(0, iv - 0.8) * 0.5 * M / s, s * (1 - _smooth(0.6, 1, r)));
+      }
+    }
+    x.putImageData(img, 0, 0);
     x.globalCompositeOperation = "lighter";
-    x.fillStyle = _softGradient(x, H, H, H, r => [bloomRGB, 0.17 * Math.exp(-Math.pow(r / 0.5, 2))]);
-    x.fillRect(0, 0, N, N);
-    const LOBES = 6;
-    for (let i = 0; i < LOBES; i++) {
-      const ang = rnd() * Math.PI * 2;
-      const dist = (0.16 + 0.32 * rnd()) * H;
-      const rad = (0.30 + 0.26 * rnd()) * H;
-      const peak = 0.08 + 0.07 * rnd();
-      const tint = _rgbMix(glowRGB, coreRGB, rnd() * 0.55);
-      const lx = H + Math.cos(ang) * dist, ly = H + Math.sin(ang) * dist;
-      x.fillStyle = _softGradient(x, lx, ly, rad, r => [tint, peak * Math.exp(-Math.pow(r / 0.55, 2)) * (1 - _smooth(0.6, 1, r))]);
-      x.fillRect(lx - rad, ly - rad, rad * 2, rad * 2);
+    for (let n = 0, placed = 0; n < 500 && placed < 64; n++) {            // specks, denser where the energy is brighter
+      const f = rnd(), iv = at(I, f);
+      if (rnd() > iv) continue;
+      const rad = at(RC, f) + (rnd() + rnd() + rnd() - 1.5) * 0.11, ang = f * 6.283185;
+      dot(x, H + Math.cos(ang) * rad * H, H + Math.sin(ang) * rad * H, H * (0.012 + 0.022 * rnd()),
+          0.10 + 0.22 * rnd() * iv, _rgbMix(glowRGB, coreRGB, 0.25 + rnd() * 0.5));
+      placed++;
+    }
+    for (let w = 0; w < 7; w++) {                                           // wisps slipping off the bright stretches
+      let f = rnd();
+      for (let tries = 0; tries < 20 && at(I, f) < 0.6; tries++) f = rnd();
+      let ang = f * 6.283185, rad = at(RC, f) + 0.02;
+      const dir = rnd() < 0.5 ? 1 : -1, len = 10 + ((rnd() * 8) | 0), tint = _rgbMix(glowRGB, bloomRGB, 0.5);
+      for (let s = 0; s < len; s++) {
+        const u = s / len;
+        ang += dir * 0.03; rad += 0.006 + 0.006 * rnd();
+        dot(x, H + Math.cos(ang) * rad * H, H + Math.sin(ang) * rad * H, H * (0.016 + 0.010 * u), 0.14 * (1 - u) * (1 - u), tint);
+      }
+    }
+    x.globalCompositeOperation = "source-over";
+  } else if (kind === "radiant") {
+        // a cloud of coloured light: domain of drifting density + tint noise, reach that wanders with angle,
+    // scattered specks and a few faint wisps; masked so it fades to nothing before the sprite edge
+    const n1 = lattice(5), n1b = lattice(4), n2 = lattice(4), n3 = lattice(13);
+    const nz = (u, v) => 0.55 * n1(u, v) + 0.45 * n1b(0.5 + 0.7 * (0.8 * (u - 0.5) - 0.6 * (v - 0.5)), 0.5 + 0.7 * (0.6 * (u - 0.5) + 0.8 * (v - 0.5)));   // two lattices, one rotated: no grid look
+    const rw = wave([2, 3, 4, 7], 0.17);
+    const img = x.createImageData(N, N), p = img.data;
+    for (let py = 0; py < N; py++) {
+      for (let px = 0; px < N; px++) {
+        const dx = (px + 0.5 - H) / H, dy = (py + 0.5 - H) / H;
+        const r = Math.hypot(dx, dy), u = (px + 0.5) / N, v = (py + 0.5) / N;
+        const rr = r / Math.max(0.55, 1 + at(rw, turn(dx, dy)));
+        const dens = 0.20 * Math.exp(-Math.pow(rr / 0.46, 2)) * (0.6 + 0.8 * nz(u, v)) * (0.9 + 0.2 * n3(u, v));
+        const t2 = n2(u, v);
+        put(p, (py * N + px) * 4, 1.3 * (t2 - 0.15), 0.35 * t2, dens * _softWindow(r));
+      }
+    }
+    x.putImageData(img, 0, 0);
+    x.globalCompositeOperation = "lighter";
+    for (let n = 0, placed = 0; n < 600 && placed < 46; n++) {              // faint specks inside the light
+      const ang = rnd() * 6.283185, rr = Math.sqrt(rnd()) * 0.8;
+      const cs = Math.cos(ang), sn = Math.sin(ang);
+      if (rnd() > nz(0.5 + cs * rr * 0.5, 0.5 + sn * rr * 0.5) * Math.exp(-Math.pow(rr / 0.55, 2)) * 1.6) continue;
+      dot(x, H + cs * rr * H, H + sn * rr * H, H * (0.012 + 0.020 * rnd()), 0.07 + 0.14 * rnd(),
+          _rgbMix(glowRGB, coreRGB, 0.2 + rnd() * 0.5));
+      placed++;
+    }
+    for (let w = 0; w < 6; w++) {                                           // wisps reaching into the dark
+      let ang = rnd() * 6.283185, rad = 0.28 + rnd() * 0.2;
+      const dir = rnd() < 0.5 ? 1 : -1, bend = 0.012 + 0.02 * rnd(), tint = _rgbMix(glowRGB, bloomRGB, 0.4);
+      for (let s = 0; s < 16; s++) {
+        const u = s / 16;
+        ang += dir * bend; rad += 0.018;
+        dot(x, H + Math.cos(ang) * rad * H, H + Math.sin(ang) * rad * H, H * (0.035 + 0.02 * u), 0.05 * (1 - u) * (1 - u), tint);
+      }
     }
     // mask the whole cloud so it fades to nothing before the sprite edge
     x.globalCompositeOperation = "destination-in";
@@ -1663,8 +1780,12 @@ function drawSoftMemoryStar(star, ts) {
 
   // 1 · Ambient light: bloom + wide diffuse glow
   const R = (28 + ageBrightness * 34) * glowScale;
-  ctx.globalAlpha = Math.min(1, (0.85 + ageBrightness * 0.8) * br);
-  ctx.drawImage(getSoftSprite("ambient", color), x - R, y - R, R * 2, R * 2);
+    ctx.globalAlpha = Math.min(1, (0.85 + ageBrightness * 0.8) * br);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(phase * Math.PI * 2 + 0.9);
+  ctx.drawImage(getSoftSprite("ambient", color), -R, -R, R * 2, R * 2);
+  ctx.restore();
 
   // 2 · Radiant aura: soft cloud of coloured light
   if (aura === "radiant") {
@@ -1682,15 +1803,23 @@ function drawSoftMemoryStar(star, ts) {
   if (aura === "halo") {
     const haloR = (9 + ageBrightness * 8) * sizeScale;
     const half  = haloR / 0.38;
-    ctx.globalAlpha = Math.min(1, (0.85 + startupPulse * 0.4) * br);
-    ctx.drawImage(getSoftSprite("ring", color), x - half, y - half, half * 2, half * 2);
+        ctx.globalAlpha = Math.min(1, (0.85 + startupPulse * 0.4) * br);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(phase * Math.PI * 2 + 1.7);
+    ctx.drawImage(getSoftSprite("ring", color, Math.floor(phase * 991) % SOFT_RADIANT_VARIANTS), -half, -half, half * 2, half * 2);
+    ctx.restore();
   }
 
   // 4 · Core: small, soft, still recognisable
   const coreR = 2.15 * sizeScale;
   const coreHalf = coreR * 1.8;
   ctx.globalAlpha = Math.min(1, 0.85 + ageBrightness * 0.4);
-  ctx.drawImage(getSoftSprite("core", color), x - coreHalf, y - coreHalf, coreHalf * 2, coreHalf * 2);
+    ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(phase * Math.PI * 2 + 2.6);
+  ctx.drawImage(getSoftSprite("core", color), -coreHalf, -coreHalf, coreHalf * 2, coreHalf * 2);
+  ctx.restore();
 
   ctx.globalAlpha = 1;
 }
