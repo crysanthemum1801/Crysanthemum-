@@ -208,6 +208,25 @@
   pointer-events: none;
 }
 
+.cc-exit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--cc-d);
+  height: var(--cc-d);
+  margin: calc(var(--cc-d) * -0.5) 0 0 calc(var(--cc-d) * -0.5);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: inherit;
+  pointer-events: auto;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.cc-exit:focus { outline: none; }
 .cc-feature {
   position: absolute;
   left: 0;
