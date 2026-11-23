@@ -889,7 +889,7 @@
         var orbit = state.orbits[name], list = state.dust[name];
         for (var k = 0; k < list.length; k++) {
           var d = list[k];
-          var pt = orbit.point(d.th, d.rs, d.lift * L.u);
+                    var pt = orbit.point(d.th + state.off[name], d.rs, d.lift * L.u);
           var n = 1 - pt.d;
           var nb = smooth(1.5, 0.75, Math.hypot(pt.x - L.cx, pt.y - L.cy) / L.r);
           var a = d.a * (0.28 + 0.85 * n) * (pt.z > 0 ? 0.7 : 1) * (1 - 0.55 * nb);
@@ -1053,7 +1053,8 @@
             var no = drag.off0 + drag.acc;
       if (no === state.off[drag.name]) return;     // nothing moved
       state.off[drag.name] = no;
-      placeOrbit(drag.name);
+            placeOrbit(drag.name);
+      drawStatic();
     }
     function endDrag() {
       if (!drag) return;
@@ -1075,7 +1076,7 @@
       endDrag();
     }
     function onLost(e) {
-      if (drag && drag.moved && e.pointerId === drag.id) endDrag();
+            if (drag && drag.moved && e.target === root && e.pointerId === drag.id) endDrag();
     }
     root.addEventListener("pointerdown", onDown);
     root.addEventListener("pointermove", onMove);
