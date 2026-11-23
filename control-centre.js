@@ -611,15 +611,7 @@
   // ═══════════════════════════════════════════════════════════
   var STARS = [
     // The single designated feature control
-    { id: "constellations", orbit: "upper", theta: rad(-122), size: 1.0, tint: "cream", feature: true },
-    // Purely decorative companions (no names, no interaction)
-    { orbit: "upper", theta: rad(22),  size: 0.50, tint: "ice" },
-    { orbit: "upper", theta: rad(103), size: 0.36, tint: "cream" },
-    { orbit: "upper", theta: rad(-42), size: 0.58, tint: "gold" },
-    { orbit: "lower", theta: rad(-98), size: 0.74, tint: "gold" },
-    { orbit: "lower", theta: rad(50),  size: 0.40, tint: "ice" },
-    { orbit: "lower", theta: rad(158), size: 0.52, tint: "cream" },
-    { orbit: "lower", theta: rad(-28), size: 0.34, tint: "ice" }
+        { id: "constellations", orbit: "upper", theta: rad(-122), size: 1.0, tint: "cream", feature: true }
   ];
   // Seconds per revolution; the two orbits turn at different rates and in opposite senses
   var ORBIT_MOTION = {
@@ -930,7 +922,7 @@
         var op = lerp(oa[i0], oa[i1], t).toFixed(3);
         if (tf !== s.tf) { s.el.style.transform = tf; s.tf = tf; }
         if (op !== s.op) { s.el.style.opacity = op; s.op = op; }
-                s.hx = x; s.hy = y; s.hr = (def.feature ? 22 : 15) * sc;   // live hit area for starting an orbit drag on a star
+                        s.hx = x; s.hy = y; s.hr = def.feature ? Math.max(22 * sc, 28) : 15 * sc;   // live hit area for starting an orbit drag on a star
         if (def.feature) fp = { x: x, y: y, sc: sc, n: lerp(T.n[i0], T.n[i1], t) };
       }
       if (fp) {
